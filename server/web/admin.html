@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SY Note Sync 管理后台</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:#f5f6f8;color:#24292f}
+  header{background:#1f6feb;color:#fff;padding:14px 24px;font-size:18px;font-weight:600}
+  main{max-width:1100px;margin:20px auto;padding:0 16px}
+  .cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .card{background:#fff;border:1px solid #e1e4e8;border-radius:8px;padding:14px 20px;min-width:140px}
+  .card b{font-size:26px;display:block}
+  h2{font-size:16px;border-left:4px solid #1f6feb;padding-left:8px}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;margin-bottom:20px}
+  th,td{padding:8px 12px;border-bottom:1px solid #eef;text-align:left;font-size:13px}
+  th{background:#f0f4ff}
+  .tag{padding:2px 8px;border-radius:10px;font-size:12px}
+  .on{background:#d4f7d4;color:#0a7a0a}.off{background:#f1f1f1;color:#888}
+  .op-insert{background:#e7f0ff;color:#1f6feb}.op-update{background:#fff3d6;color:#9a6700}.op-delete{background:#ffe5e5;color:#c00}
+  .conflict{background:#fff8e6;border:1px solid #f0d060;border-radius:8px;padding:10px 14px;margin-bottom:8px}
+  pre{white-space:pre-wrap;word-break:break-all;font-size:12px;color:#555;margin:4px 0}
+  .toolbar{margin-bottom:14px}
+  button{padding:6px 14px;border:1px solid #1f6feb;background:#fff;color:#1f6feb;border-radius:6px;cursor:pointer;margin-right:8px}
+  button.pri{background:#1f6feb;color:#fff}
+  #msg{color:#0a7a0a;font-size:13px}
+</style>
+</head>
+<body>
+<header>SY Note Sync · 同步服务管理后台</header>
+<main>
+  <!-- 顶部统计卡片 -->
+  <div class="cards">
+    <div class="card"><b id="stDevices">0</b>已注册设备</div>
+    <div class="card"><b id="stOnline">0</b>在线设备</div>
+    <div class="card"><b id="stChanges">0</b>累计块变更</div>
+    <div class="card"><b id="stConflicts">0</b>待处理冲突</div>
+  </div>
+
+  <!-- 操作区：创建快照 / 令牌输入 -->
+  <div class="toolbar">
+    管理令牌：<input id="token" type="password" placeholder="输入管理令牌" style="padding:6px;width:220px">
+    <button class="pri" onclick="createSnapshot()">创建当前快照</button>
+    <span id="msg"></span>
+  </div>
+
+  <h2>设备列表</h2>
+  <table id="devices"><thead><tr><th>ID</th><th>名称</th><th>状态</th><th>注册时间</th><th>最近在线</th></tr></thead><tbody></tbody></table>
+
+  <h2>待处理块冲突</h2>
+  <div id="conflicts">暂无冲突</div>
+
+  <h2>快照列表</h2>
+  <table id="snapshots"><thead><tr><th>ID</th><th>名称</th><th>块数</th><th>创建时间</th></tr></thead><tbody></tbody></table>
+
+  <h2>最近块变更日志（最新 100 条）</h2>
+  <table id="logs"><thead><tr><th>#</th><th>块ID</th><th>操作</th><th>设备</th><th>时间</th><th>内容摘要</th></tr></thead><tbody></tbody></table>
+</main>
+<script>
+// 从 URL ?token= 读取令牌，方便一次输入
+const urlTok = new URLSearchParams(location.search).get('token');
+if (urlTok) document.getElementById('token').value = urlTok;
+const fmt = ts => ts ? new Date(ts*1000).toLocaleString() : '-';
+
+async function refresh(){
+  const token = document.getElementById('token').value;
+  let data;
+  try {
+    const res = await fetch('/api/admin/data?token='+encodeURIComponent(token));
+    if (res.status === 401) { document.getElementById('msg').textContent='令牌错误'; return; }
+    data = await res.json();
+  } catch(e){ return; }
+  document.getElementById('msg').textContent='';
+  const devs = data.devices||[], online = devs.filter(d=>d.online).length;
+  stDevices.textContent=devs.length; stOnline.textContent=online;
+  stChanges.textContent=data.changeCount||0; stConflicts.textContent=data.conflictCount||0;
+  // 设备表
+  document.querySelector('#devices tbody').innerHTML = devs.map(d=>
+    `<tr><td>${d.id}</td><td>${d.name}</td>
+     <td><span class="tag ${d.online?'on':'off'}">${d.online?'在线':'离线'}</span></td>
+     <td>${fmt(d.created)}</td><td>${fmt(d.lastSeen)}</td></tr>`).join('');
+  // 冲突区
+  const cf = data.conflicts||[];
+  document.getElementById('conflicts').innerHTML = cf.length? cf.map(c=>
+    `<div class="conflict">冲突 #${c.id} · 块 ${c.blockId}
+      <pre>版本A：${(c.versionA&&c.versionA.markdown)||'(已删除)'}</pre>
+      <pre>版本B：${(c.versionB&&c.versionB.markdown)||'(已删除)'}</pre>
+     </div>`).join('') : '暂无冲突';
+  // 快照表
+  document.querySelector('#snapshots tbody').innerHTML = (data.snapshots||[]).map(s=>
+    `<tr><td>${s.id}</td><td>${s.name}</td><td>${s.blocks}</td><td>${fmt(s.created)}</td></tr>`).join('');
+  // 日志表
+  document.querySelector('#logs tbody').innerHTML = (data.logs||[]).map(l=>
+    `<tr><td>${l.id}</td><td>${l.blockId}</td>
+     <td><span class="tag op-${l.op}">${l.op}</span></td>
+     <td>${l.deviceId}</td><td>${fmt(l.ts)}</td><td><pre>${l.markdown||''}</pre></td></tr>`).join('');
+}
+async function createSnapshot(){
+  const token = document.getElementById('token').value;
+  const name = prompt('快照名称（留空自动用时间）','');
+  const res = await fetch('/api/admin/snapshot/create', {method:'POST', headers:{'X-Admin-Token':token,'Content-Type':'application/json'}, body:JSON.stringify({name})});
+  msg.textContent = res.ok ? '快照已创建 ✓' : '创建失败（检查令牌）';
+  refresh();
+}
+refresh(); setInterval(refresh, 10000);
+</script>
+</body>
+</html>

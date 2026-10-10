@@ -1,0 +1,27 @@
+/* SY Note Sync 插件样式 */
+
+/* 冲突弹窗：两版本并排 */
+.synconflict .sc-versions {
+    display: flex;
+    gap: 12px;
+}
+.synconflict .sc-ver {
+    flex: 1;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+.synconflict .sc-ver h4 {
+    margin: 0 0 6px;
+}
+.synconflict .sc-ver pre {
+    max-height: 200px;
+    overflow: auto;
+    background: var(--b3-theme-surface);
+    padding: 8px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-size: 12px;
+    margin: 0 0 8px;
+}
