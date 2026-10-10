@@ -274,13 +274,22 @@ export default class SYNoteSync extends Plugin {
         const html = `
 <div class="b3-dialog__content" style="padding:16px">
   <h3>SY Note Sync 同步设置</h3>
+  <div class="sc-help">
+    <p><b>三步完成连接（每台设备只需操作一次）：</b></p>
+    <p>① 填「同步服务地址」和「管理令牌」→ 点「注册新设备」：插件会向 NAS 上的同步服务登记本机（如"我的iPhone"），服务器现场生成一把<b>设备密钥</b>自动填入下方输入框 —— 注册就是"领钥匙"，一台设备领一次。</p>
+    <p>② 点「保存配置」：插件与服务器建立长连接，此后本地改动 5 秒自动推送，远端改动实时同步过来。</p>
+    <p>③ 新设备/内容不全时，点「首次全量同步」把服务器上的全部笔记拉回本机。</p>
+    <p><b>两个"令牌"别混淆：</b><br>
+    · <b>管理令牌</b> = 你自己定的管理员密码（部署容器时的 SYNCSRV_ADMIN_TOKEN），仅用于注册设备和看 Web 后台，日常同步用不到；<br>
+    · <b>设备密钥</b> = 每台设备自己的通行证，注册时服务器自动发放，无需手填、无需记忆。换新手机/电脑再接同步时：填同样地址和管理令牌，设备名称换个新名字，再点一次注册即可。</p>
+  </div>
   <label>同步服务地址（内网 IP:端口 或 https 域名）</label>
   <input id="scUrl" class="b3-text-field" style="width:100%" placeholder="如 http://192.168.1.10:58282 或 https://sync.example.com" value="${esc(this.cfg.serverUrl)}">
-  <label>设备名称</label>
-  <input id="scDevName" class="b3-text-field" style="width:100%" placeholder="如 我的Windows" value="${esc(this.cfg.deviceName || "本机")}">
-  <label>管理令牌（仅注册新设备时需要，即服务端启动参数 admin-token）</label>
+  <label>设备名称（注册时用，起个方便认的名字，如：我的iPhone）</label>
+  <input id="scDevName" class="b3-text-field" style="width:100%" placeholder="如 我的iPhone" value="${esc(this.cfg.deviceName || "本机")}">
+  <label>管理令牌（部署服务端时你自己设置的管理员密码，仅注册新设备时需要）</label>
   <input id="scAdmin" class="b3-text-field" style="width:100%" type="password" value="${esc(this.cfg.adminToken)}">
-  <label>设备密钥（注册成功后自动填入；也可手动粘贴已有密钥）</label>
+  <label>设备密钥（点"注册新设备"后自动填入，无需手填；换设备重装时可粘贴旧密钥）</label>
   <input id="scKey" class="b3-text-field" style="width:100%" type="password" value="${esc(this.cfg.deviceKey)}">
   <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">
     <button class="b3-button b3-button--outline" id="scReg">① 注册新设备</button>
@@ -290,9 +299,6 @@ export default class SYNoteSync extends Plugin {
     <button class="b3-button b3-button--outline" id="scPause">${this.cfg.paused ? "已暂停（点击恢复）" : "暂停同步"}</button>
     <button class="b3-button b3-button--outline" id="scFull">首次全量同步</button>
   </div>
-  <p style="color:var(--b3-theme-on-surface);font-size:12px;margin-top:12px">
-    使用流程：部署同步服务 → 填地址与管理令牌点"注册新设备" → 密钥自动填入 → 保存 → 立即同步。
-  </p>
 </div>`;
         const dlg = new Dialog({ title: "SY Note Sync 设置", content: html, width: "560px" });
         const $ = (id: string) => dlg.element.querySelector(id) as HTMLInputElement;

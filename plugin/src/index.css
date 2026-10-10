@@ -1,5 +1,19 @@
 /* SY Note Sync 插件样式 */
 
+/* 设置页帮助说明块 */
+.sc-help {
+    background: var(--b3-theme-surface);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.7;
+    margin-bottom: 12px;
+}
+.sc-help p {
+    margin: 4px 0;
+}
+
 /* 冲突弹窗：两版本并排 */
 .synconflict .sc-versions {
     display: flex;
