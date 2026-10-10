@@ -1,0 +1,6 @@
+{
+  "syncNow": {
+    "name": "立即同步",
+    "description": "手动触发一次同步"
+  }
+}

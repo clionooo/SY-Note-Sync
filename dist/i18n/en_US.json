@@ -1,0 +1,6 @@
+{
+  "syncNow": {
+    "name": "Sync now",
+    "description": "Trigger a manual sync"
+  }
+}

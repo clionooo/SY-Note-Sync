@@ -1,0 +1,24 @@
+{
+  "name": "sy-note-sync",
+  "version": "0.1.0",
+  "description": "SY Note Sync - SiYuan note sync plugin",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build"
+  },
+  "keywords": [
+    "siyuan",
+    "plugin"
+  ],
+  "author": "clionooo",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "siyuan": "^1.2.9",
+    "tslib": "^2.6.2",
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0",
+    "vite-plugin-static-copy": "^1.0.0"
+  }
+}
