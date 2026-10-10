@@ -54,8 +54,10 @@ jobs:
         with:
           node-version: "20"
 
-      - name: 安装 pnpm
-        run: npm install -g pnpm
+      - name: 安装 pnpm 9
+        # 固定 pnpm 大版本：pnpm v10 默认开启 minimumReleaseAge 供应链策略，
+        # 会误拒 lockfile 中的新包，导致 frozen-lockfile 安装失败
+        run: npm install -g pnpm@9
 
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
