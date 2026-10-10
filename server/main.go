@@ -58,10 +58,16 @@ func main() {
 	// 冲突处理
 	http.HandleFunc("/api/conflict/list", authDevice(handleConflictList))    // 未解决冲突列表
 	http.HandleFunc("/api/conflict/resolve", authDevice(handleConflictResolve)) // 解决冲突（选定版本）
+	// 块历史与回收站（恢复删除/历史版本）
+	http.HandleFunc("/api/block/history", authDevice(handleBlockHistory))       // 某块全部历史版本
+	http.HandleFunc("/api/block/restore", authDevice(handleBlockRestore))       // 恢复某历史版本
+	http.HandleFunc("/api/trash", authDevice(handleTrash))                      // 回收站列表
 	// Web 管理后台
 	http.HandleFunc("/admin", handleAdminPage)             // 后台页面
 	http.HandleFunc("/api/admin/data", authAdmin(handleAdminData)) // 后台数据
 	http.HandleFunc("/api/admin/snapshot/create", authAdmin(handleAdminSnapshotCreate)) // 后台创建快照
+	http.HandleFunc("/api/admin/block/history", authAdmin(handleAdminBlockHistory))     // 后台查块历史
+	http.HandleFunc("/api/admin/block/restore", authAdmin(handleAdminBlockRestore))     // 后台恢复版本
 
 	// 健康检查
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {

@@ -24,6 +24,26 @@ export interface ConflictInfo {
     versionB: BlockChange; // 本地挑战版本
 }
 
+/** 回收站条目：被删除的块 */
+export interface TrashItem {
+    blockId: string;
+    docId: string;
+    changeId: number;  // 最新删除版本 id，恢复时用它
+    markdown: string;  // 被删前内容
+    parentId?: string;
+    deviceId: number;
+    ts: number;
+}
+
+/** 块历史版本条目 */
+export interface HistoryItem {
+    changeId: number;
+    op: "insert" | "update" | "delete";
+    markdown: string;
+    deviceId: number;
+    ts: number;
+}
+
 /** 设备注册响应 */
 export interface RegisterResult {
     deviceId: number;
@@ -115,6 +135,23 @@ export class SyncClient {
     /** 解决冲突：chosenChangeId 传 0 表示保留服务端版本 */
     async resolveConflict(conflictId: number, chosenChangeId: number) {
         return this.post("/api/conflict/resolve", { conflictId, chosenChangeId });
+    }
+
+    // ---------------- 块历史与回收站 ----------------
+
+    /** 回收站：列出被删除的块（服务端保留删除记录，可恢复） */
+    async trash(): Promise<{ trash: TrashItem[] }> {
+        return this.post("/api/trash", {});
+    }
+
+    /** 某块的全部历史版本（含删除记录） */
+    async blockHistory(blockId: string): Promise<{ history: HistoryItem[] }> {
+        return this.post("/api/block/history", { blockId });
+    }
+
+    /** 恢复某个历史版本（服务端会广播给其他设备；返回恢复后的块内容供本机写入） */
+    async restoreBlock(changeId: number): Promise<{ ok: boolean; block: BlockChange }> {
+        return this.post("/api/block/restore", { changeId });
     }
 
     // ---------------- WebSocket 长连接 ----------------

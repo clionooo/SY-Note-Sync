@@ -117,6 +117,21 @@ func handlePush(dr *deviceReq) {
 
 	for i := range in.Changes {
 		c := &in.Changes[i]
+		// 删除操作的补齐：客户端推 delete 时通常不带内容，
+		// 从服务端最新块状态表取出被删前内容存入日志（回收站/恢复依赖它）
+		if c.Op == "delete" && c.Markdown == "" {
+			var prevMarkdown, prevParent, prevDoc string
+			row := db.QueryRow("SELECT markdown,parent_id,doc_id FROM blocks WHERE block_id=?", c.BlockID)
+			if err := row.Scan(&prevMarkdown, &prevParent, &prevDoc); err == nil {
+				c.Markdown = prevMarkdown
+				if c.ParentID == "" {
+					c.ParentID = prevParent
+				}
+				if c.DocID == "" {
+					c.DocID = prevDoc
+				}
+			}
+		}
 		rev, err := insertChange(c, dr.deviceID)
 		if err != nil {
 			log.Printf("[push] 写变更日志失败: %v", err)
@@ -423,12 +438,101 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 	}
 	rows3.Close()
 
+	trashList, _ := getTrash()
+
 	writeJSON(w, 200, map[string]interface{}{
 		"devices": devices, "changeCount": changeCount,
 		"conflictCount": conflictCount, "logs": logs,
 		"snapshots": snaps, "conflicts": openConflicts,
+		"trash": trashList,
 		"now": time.Now().Unix(),
 	})
 }
 
 var _ = strconv.Itoa // 保留 import
+
+// ---------- 块历史与回收站 ----------
+
+// POST /api/block/history {blockId} -> 该块全部历史版本
+func handleBlockHistory(dr *deviceReq) {
+	var in struct {
+		BlockID string `json:"blockId"`
+	}
+	if err := json.NewDecoder(dr.Body).Decode(&in); err != nil || in.BlockID == "" {
+		fail(dr.ResponseWriter, 400, "缺少 blockId")
+		return
+	}
+	list, err := getBlockHistory(in.BlockID)
+	if err != nil {
+		fail(dr.ResponseWriter, 500, err.Error())
+		return
+	}
+	writeJSON(dr.ResponseWriter, 200, map[string]interface{}{"history": list})
+}
+
+// POST /api/trash -> 回收站列表（被删除的块）
+func handleTrash(dr *deviceReq) {
+	list, err := getTrash()
+	if err != nil {
+		fail(dr.ResponseWriter, 500, err.Error())
+		return
+	}
+	writeJSON(dr.ResponseWriter, 200, map[string]interface{}{"trash": list})
+}
+
+// POST /api/block/restore {changeId} -> 恢复某个历史版本
+// 恢复后写入日志/块状态并广播给其他设备
+func handleBlockRestore(dr *deviceReq) {
+	var in struct {
+		ChangeID int64 `json:"changeId"`
+	}
+	if err := json.NewDecoder(dr.Body).Decode(&in); err != nil || in.ChangeID == 0 {
+		fail(dr.ResponseWriter, 400, "缺少 changeId")
+		return
+	}
+	rc, rev, err := restoreChange(in.ChangeID, dr.deviceID)
+	if err != nil {
+		fail(dr.ResponseWriter, 500, "恢复失败: "+err.Error())
+		return
+	}
+	log.Printf("[restore] 设备 %d 恢复块 %s 到版本 %d (op=%s)", dr.deviceID, rc.BlockID, in.ChangeID, rc.Op)
+	// 广播恢复结果，其他设备自动写回本地
+	hubRef.broadcastExcept(dr.deviceID, "remote_change", map[string]interface{}{
+		"blockId": rc.BlockID, "docId": rc.DocID, "op": rc.Op,
+		"markdown": rc.Markdown, "parentId": rc.ParentID, "rev": rev,
+	})
+	writeJSON(dr.ResponseWriter, 200, map[string]interface{}{"ok": true, "block": rc, "rev": rev})
+}
+
+// POST /api/admin/block/history?token=xxx  {blockId}（后台用管理令牌查历史）
+func handleAdminBlockHistory(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		BlockID string `json:"blockId"`
+	}
+	json.NewDecoder(r.Body).Decode(&in)
+	list, err := getBlockHistory(in.BlockID)
+	if err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]interface{}{"history": list})
+}
+
+// POST /api/admin/block/restore?token=xxx  {changeId}（后台用管理令牌恢复）
+func handleAdminBlockRestore(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ChangeID int64 `json:"changeId"`
+	}
+	json.NewDecoder(r.Body).Decode(&in)
+	rc, rev, err := restoreChange(in.ChangeID, 0)
+	if err != nil {
+		fail(w, 500, "恢复失败: "+err.Error())
+		return
+	}
+	log.Printf("[restore] Web后台恢复块 %s 到版本 %d (op=%s)", rc.BlockID, in.ChangeID, rc.Op)
+	hubRef.broadcastExcept(0, "remote_change", map[string]interface{}{
+		"blockId": rc.BlockID, "docId": rc.DocID, "op": rc.Op,
+		"markdown": rc.Markdown, "parentId": rc.ParentID, "rev": rev,
+	})
+	writeJSON(w, 200, map[string]interface{}{"ok": true})
+}

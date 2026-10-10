@@ -259,3 +259,87 @@ func getFullBlocks(snapshotID int64) ([]FullBlock, error) {
 	}
 	return out, nil
 }
+
+// ---------- 块历史与回收站 ----------
+
+// HistoryItem 某个块的一条历史版本
+type HistoryItem struct {
+	ChangeID int64  `json:"changeId"` // 变更日志 id（恢复时用它定位）
+	Op       string `json:"op"`
+	Markdown string `json:"markdown"`
+	DeviceID int64  `json:"deviceId"`
+	TS       int64  `json:"ts"`
+}
+
+// getBlockHistory 查某个块的全部历史版本（含删除记录），按时间倒序
+func getBlockHistory(blockID string) ([]HistoryItem, error) {
+	rows, err := db.Query(`SELECT id,op,markdown,device_id,ts FROM changes
+		WHERE block_id=? ORDER BY id DESC LIMIT 200`, blockID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []HistoryItem
+	for rows.Next() {
+		var h HistoryItem
+		rows.Scan(&h.ChangeID, &h.Op, &h.Markdown, &h.DeviceID, &h.TS)
+		out = append(out, h)
+	}
+	return out, nil
+}
+
+// TrashItem 回收站条目：最新操作是删除、且当前已不在块状态表里的块
+type TrashItem struct {
+	BlockID  string `json:"blockId"`
+	DocID    string `json:"docId"`
+	ChangeID int64  `json:"changeId"` // 该块的最新（删除）版本
+	Markdown string `json:"markdown"` // 被删前的内容
+	ParentID string `json:"parentId"`
+	DeviceID int64  `json:"deviceId"`
+	TS       int64  `json:"ts"`
+}
+
+// getTrash 列出回收站：每个块只取最新一条删除记录
+// 条件：块最新的变更 op=delete，且该块已不在 blocks 最新状态表中
+func getTrash() ([]TrashItem, error) {
+	rows, err := db.Query(`
+		SELECT c.block_id,c.doc_id,c.id,c.markdown,c.parent_id,c.device_id,c.ts
+		FROM changes c
+		JOIN (SELECT block_id, MAX(id) AS mid FROM changes GROUP BY block_id) m
+			ON m.block_id=c.block_id AND m.mid=c.id
+		WHERE c.op='delete'
+		  AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.block_id=c.block_id)
+		ORDER BY c.id DESC LIMIT 500`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TrashItem
+	for rows.Next() {
+		var t TrashItem
+		rows.Scan(&t.BlockID, &t.DocID, &t.ChangeID, &t.Markdown, &t.ParentID, &t.DeviceID, &t.TS)
+		out = append(out, t)
+	}
+	return out, nil
+}
+
+// restoreChange 把某条历史版本恢复为该块的最新状态：
+// 复制该版本内容作为一条新变更写入日志，并更新 blocks 最新状态表。
+// 删除的块恢复时 op 视为 insert（重新插入），其余视为 update。
+func restoreChange(changeID, deviceID int64) (*BlockChange, int64, error) {
+	c, err := getChangeByID(changeID)
+	if err != nil {
+		return nil, 0, err
+	}
+	op := c.Op
+	if op == "delete" {
+		op = "insert" // 恢复被删除的块 => 重新插入
+	}
+	rc := &BlockChange{BlockID: c.BlockID, DocID: c.DocID, Op: op, Markdown: c.Markdown, ParentID: c.ParentID}
+	rev, err := insertChange(rc, deviceID)
+	if err != nil {
+		return nil, 0, err
+	}
+	applyChange(rc, deviceID, rev)
+	return rc, rev, nil
+}

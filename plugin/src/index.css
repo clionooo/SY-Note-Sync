@@ -1,5 +1,25 @@
 /* SY Note Sync 插件样式 */
 
+/* 回收站条目 */
+.sc-trash-item {
+    border: 1px solid var(--b3-border-color);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+.sc-trash-item pre {
+    max-height: 120px;
+    overflow: auto;
+    background: var(--b3-theme-surface);
+    padding: 6px 8px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-size: 12px;
+    margin: 6px 0;
+}
+
 /* 设置页帮助说明块 */
 .sc-help {
     background: var(--b3-theme-surface);

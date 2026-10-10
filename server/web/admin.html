@@ -53,9 +53,21 @@
   <h2>快照列表</h2>
   <table id="snapshots"><thead><tr><th>ID</th><th>名称</th><th>块数</th><th>创建时间</th></tr></thead><tbody></tbody></table>
 
-  <h2>最近块变更日志（最新 100 条）</h2>
+  <h2>回收站（被删除的块，可恢复）</h2>
+  <table id="trash"><thead><tr><th>块ID</th><th>所属文档</th><th>删除时间</th><th>操作设备</th><th>被删前内容</th><th>操作</th></tr></thead><tbody></tbody></table>
+
+  <h2>最近块变更日志（最新 100 条，点块ID看历史版本）</h2>
   <table id="logs"><thead><tr><th>#</th><th>块ID</th><th>操作</th><th>设备</th><th>时间</th><th>内容摘要</th></tr></thead><tbody></tbody></table>
 </main>
+
+<!-- 块历史版本弹窗 -->
+<div id="histDlg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99">
+  <div style="background:#fff;max-width:720px;margin:60px auto;border-radius:10px;padding:18px;max-height:75vh;overflow:auto">
+    <h3 style="margin-top:0">块历史版本 <span id="histBlock" style="color:#1f6feb"></span></h3>
+    <div id="histList"></div>
+    <button onclick="document.getElementById('histDlg').style.display='none'">关闭</button>
+  </div>
+</div>
 <script>
 // 从 URL ?token= 读取令牌，方便一次输入
 const urlTok = new URLSearchParams(location.search).get('token');
@@ -89,11 +101,39 @@ async function refresh(){
   // 快照表
   document.querySelector('#snapshots tbody').innerHTML = (data.snapshots||[]).map(s=>
     `<tr><td>${s.id}</td><td>${s.name}</td><td>${s.blocks}</td><td>${fmt(s.created)}</td></tr>`).join('');
-  // 日志表
+  // 日志表（块ID可点击查看历史）
   document.querySelector('#logs tbody').innerHTML = (data.logs||[]).map(l=>
-    `<tr><td>${l.id}</td><td>${l.blockId}</td>
+    `<tr><td>${l.id}</td><td><a href="javascript:showHistory('${l.blockId}')" style="color:#1f6feb">${l.blockId}</a></td>
      <td><span class="tag op-${l.op}">${l.op}</span></td>
      <td>${l.deviceId}</td><td>${fmt(l.ts)}</td><td><pre>${l.markdown||''}</pre></td></tr>`).join('');
+  // 回收站
+  document.querySelector('#trash tbody').innerHTML = (data.trash||[]).length? (data.trash||[]).map(t=>
+    `<tr><td>${t.blockId}</td><td>${t.docId}</td><td>${fmt(t.ts)}</td><td>设备${t.deviceId}</td>
+     <td><pre>${(t.markdown||'').slice(0,120)}</pre></td>
+     <td><button onclick="restoreBlock(${t.changeId})">恢复</button></td></tr>`).join('')
+    : '<tr><td colspan="6">回收站为空</td></tr>';
+}
+// 恢复回收站中的块（用管理令牌）
+async function restoreBlock(changeId){
+  const token = document.getElementById('token').value;
+  const res = await fetch('/api/admin/block/restore?token='+encodeURIComponent(token),
+    {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({changeId})});
+  msg.textContent = res.ok ? '已恢复并同步到所有设备 ✓' : '恢复失败（检查令牌）';
+  refresh();
+}
+// 查看某块的全部历史版本
+async function showHistory(blockId){
+  const token = document.getElementById('token').value;
+  document.getElementById('histBlock').textContent = blockId;
+  document.getElementById('histDlg').style.display='block';
+  const res = await fetch('/api/admin/block/history?token='+encodeURIComponent(token),
+    {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({blockId})});
+  const d = await res.json();
+  document.getElementById('histList').innerHTML = (d.history||[]).map(h=>
+    `<div class="conflict"><span class="tag op-${h.op}">${h.op}</span> #${h.changeId} · 设备${h.deviceId} · ${fmt(h.ts)}
+      <pre>${h.markdown||'(无内容)'}</pre>
+      <button onclick="restoreBlock(${h.changeId});document.getElementById('histDlg').style.display='none'">恢复此版本</button>
+     </div>`).join('') || '<p>无历史记录</p>';
 }
 async function createSnapshot(){
   const token = document.getElementById('token').value;

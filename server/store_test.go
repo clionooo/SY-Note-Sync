@@ -174,3 +174,60 @@ func TestSnapshotLifecycle(t *testing.T) {
 		t.Fatalf("快照列表异常: %+v err=%v", list, err)
 	}
 }
+
+// TestBlockHistoryAndRestore 块历史查询与版本恢复（含删除恢复）
+func TestBlockHistoryAndRestore(t *testing.T) {
+	setupTestDB(t)
+	devID, _, _ := createDevice("dev")
+
+	// 写入 → 修改 → 删除，产生 3 条历史
+	v1 := &BlockChange{BlockID: "bk", DocID: "d1", Op: "insert", Markdown: "版本1", ParentID: "d1"}
+	r1, _ := insertChange(v1, devID)
+	applyChange(v1, devID, r1)
+	v2 := &BlockChange{BlockID: "bk", DocID: "d1", Op: "update", Markdown: "版本2"}
+	r2, _ := insertChange(v2, devID)
+	applyChange(v2, devID, r2)
+	v3 := &BlockChange{BlockID: "bk", DocID: "d1", Op: "delete", Markdown: "版本2"} // 删除时补齐了被删前内容
+	r3, _ := insertChange(v3, devID)
+	applyChange(v3, devID, r3)
+
+	// 历史应有 3 条，倒序
+	hist, err := getBlockHistory("bk")
+	if err != nil || len(hist) != 3 {
+		t.Fatalf("历史应 3 条, got %d err=%v", len(hist), err)
+	}
+	if hist[0].Op != "delete" || hist[2].Markdown != "版本1" {
+		t.Fatalf("历史顺序/内容异常: %+v", hist)
+	}
+
+	// 回收站应包含该块
+	trash, _ := getTrash()
+	if len(trash) != 1 || trash[0].BlockID != "bk" || trash[0].Markdown != "版本2" {
+		t.Fatalf("回收站异常: %+v", trash)
+	}
+
+	// 恢复被删版本（r3）→ 块应回到"版本2"内容
+	rc, rev, err := restoreChange(r3, devID)
+	if err != nil || rc.Markdown != "版本2" || rev == 0 {
+		t.Fatalf("恢复失败: %+v rev=%d err=%v", rc, rev, err)
+	}
+	blocks, _ := getFullBlocks(0)
+	if len(blocks) != 1 || blocks[0].Markdown != "版本2" {
+		t.Fatalf("恢复后状态异常: %+v", blocks)
+	}
+	// 恢复后回收站应为空
+	trash2, _ := getTrash()
+	if len(trash2) != 0 {
+		t.Fatalf("恢复后回收站应为空, got %+v", trash2)
+	}
+
+	// 恢复最早的"版本1"（r1）
+	rc1, _, _ := restoreChange(r1, devID)
+	if rc1.Markdown != "版本1" {
+		t.Fatalf("恢复版本1失败: %+v", rc1)
+	}
+	blocks2, _ := getFullBlocks(0)
+	if blocks2[0].Markdown != "版本1" {
+		t.Fatalf("恢复版本1后状态异常: %+v", blocks2)
+	}
+}

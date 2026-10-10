@@ -262,6 +262,79 @@ export default class SYNoteSync extends Plugin {
         dlg.element.querySelector("#scB")?.addEventListener("click", () => choose(conflict.versionB.rev || 0));
     }
 
+    // ================= 回收站 / 块历史 =================
+
+    /**
+     * 回收站弹窗：展示服务端记录的被删除块（删除记录永久留痕），
+     * 点"恢复"把该块写回本地，同时服务端广播给所有设备。
+     * 支持输入块 ID 查看该块全部历史版本并恢复任意版本。
+     */
+    private showTrashDialog() {
+        if (!this.client) { showMessage("请先配置并保存服务器地址与密钥", 3000, "error"); return; }
+        const esc = (s: string) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const dlg = new Dialog({
+            title: "SY Note Sync · 回收站与块历史",
+            content: `<div class="b3-dialog__content" style="padding:12px">
+                <div style="display:flex;gap:8px;margin-bottom:10px">
+                    <input id="scHistBlockId" class="b3-text-field" style="flex:1" placeholder="输入块ID查看该块全部历史版本（可选）">
+                    <button class="b3-button b3-button--outline" id="scHistBtn">查历史</button>
+                </div>
+                <div id="scTrashList" style="max-height:50vh;overflow:auto">加载中...</div>
+            </div>`,
+            width: "680px",
+        });
+        const renderTrash = async () => {
+            try {
+                const r = await this.client!.trash();
+                const list = r.trash || [];
+                (dlg.element.querySelector("#scTrashList") as HTMLElement).innerHTML = list.length
+                    ? list.map(t => `
+                        <div class="sc-trash-item">
+                            <div><b>${esc(t.blockId)}</b> · 删除于 ${new Date(t.ts * 1000).toLocaleString()} · 设备${t.deviceId}</div>
+                            <pre>${esc((t.markdown || "").slice(0, 200))}</pre>
+                            <button class="b3-button b3-button--outline" data-restore="${t.changeId}">恢复此块</button>
+                        </div>`).join("")
+                    : "回收站为空（被删除的块会出现在这里，内容永久保留）";
+            } catch (e: any) {
+                (dlg.element.querySelector("#scTrashList") as HTMLElement).textContent = "加载失败：" + e.message;
+            }
+        };
+        // 恢复：服务端广播给其他设备，本机手动写回
+        dlg.element.addEventListener("click", async (ev) => {
+            const btn = (ev.target as HTMLElement).closest("[data-restore]") as HTMLElement | null;
+            if (!btn) return;
+            const changeId = Number(btn.dataset.restore);
+            try {
+                const r = await this.client!.restoreBlock(changeId);
+                await this.applyRemoteChange(r.block);
+                showMessage("已恢复，并已同步到其他设备", 2500);
+                renderTrash();
+            } catch (e: any) {
+                showMessage("恢复失败：" + e.message, 3000, "error");
+            }
+        });
+        // 按块 ID 查历史版本
+        dlg.element.querySelector("#scHistBtn")?.addEventListener("click", async () => {
+            const blockId = (dlg.element.querySelector("#scHistBlockId") as HTMLInputElement).value.trim();
+            if (!blockId) return;
+            try {
+                const r = await this.client!.blockHistory(blockId);
+                const list = r.history || [];
+                (dlg.element.querySelector("#scTrashList") as HTMLElement).innerHTML = list.length
+                    ? `<p><b>块 ${esc(blockId)} 的历史版本（最新在上）：</b></p>` + list.map(h => `
+                        <div class="sc-trash-item">
+                            <div><b>${h.op}</b> · #${h.changeId} · 设备${h.deviceId} · ${new Date(h.ts * 1000).toLocaleString()}</div>
+                            <pre>${esc(h.markdown || "(无内容)")}</pre>
+                            <button class="b3-button b3-button--outline" data-restore="${h.changeId}">恢复此版本</button>
+                        </div>`).join("")
+                    : "该块没有历史记录";
+            } catch (e: any) {
+                showMessage("查询失败：" + e.message, 3000, "error");
+            }
+        });
+        renderTrash();
+    }
+
     // ================= 设置面板 =================
 
     /**
@@ -298,6 +371,7 @@ export default class SYNoteSync extends Plugin {
     <button class="b3-button b3-button--outline" id="scAuto">自动同步：${this.cfg.autoSync ? "开" : "关"}</button>
     <button class="b3-button b3-button--outline" id="scPause">${this.cfg.paused ? "已暂停（点击恢复）" : "暂停同步"}</button>
     <button class="b3-button b3-button--outline" id="scFull">首次全量同步</button>
+    <button class="b3-button b3-button--outline" id="scTrash">回收站 / 历史</button>
   </div>
 </div>`;
         const dlg = new Dialog({ title: "SY Note Sync 设置", content: html, width: "560px" });
@@ -345,6 +419,9 @@ export default class SYNoteSync extends Plugin {
             if (this.cfg.paused) { this.client?.disconnect(); } else { this.initClient(); }
             await this.saveData("config", this.cfg);
         });
+
+        // 回收站 / 历史版本：查看被删块与历史版本并恢复
+        dlg.element.querySelector("#scTrash")?.addEventListener("click", () => this.showTrashDialog());
 
         // 首次全量同步：从服务端拉全部块状态写回本地（新设备初始化）
         dlg.element.querySelector("#scFull")?.addEventListener("click", async () => {
