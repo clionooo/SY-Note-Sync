@@ -36,7 +36,7 @@ Go 后端同步服务（Docker 容器，部署在 NAS）+ 思源笔记前端插�
 ```bash
 # 1. 部署服务端（NAS）
 docker compose up -d --build
-# 管理后台 http://NAS:8282/admin
+# 管理后台 http://NAS:58282/admin
 
 # 2. 构建插件
 cd plugin && pnpm install && pnpm build

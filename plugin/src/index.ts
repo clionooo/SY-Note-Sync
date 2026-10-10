@@ -275,7 +275,7 @@ export default class SYNoteSync extends Plugin {
 <div class="b3-dialog__content" style="padding:16px">
   <h3>SY Note Sync 同步设置</h3>
   <label>同步服务地址（内网 IP:端口 或 https 域名）</label>
-  <input id="scUrl" class="b3-text-field" style="width:100%" placeholder="如 http://192.168.1.10:8282 或 https://sync.example.com" value="${esc(this.cfg.serverUrl)}">
+  <input id="scUrl" class="b3-text-field" style="width:100%" placeholder="如 http://192.168.1.10:58282 或 https://sync.example.com" value="${esc(this.cfg.serverUrl)}">
   <label>设备名称</label>
   <input id="scDevName" class="b3-text-field" style="width:100%" placeholder="如 我的Windows" value="${esc(this.cfg.deviceName || "本机")}">
   <label>管理令牌（仅注册新设备时需要，即服务端启动参数 admin-token）</label>

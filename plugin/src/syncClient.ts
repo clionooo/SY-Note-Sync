@@ -37,7 +37,7 @@ export class SyncClient {
     private alive = false;        // WebSocket 连接状态
 
     constructor(
-        private serverUrl: string, // 同步服务地址，如 http://192.168.1.10:8282 或 https://sync.example.com
+        private serverUrl: string, // 同步服务地址，如 http://192.168.1.10:58282 或 https://sync.example.com
         private deviceKey: string, // 设备密钥
         private onRemoteChange: (c: BlockChange) => void, // 收到远端变更的回调
         private onStatusChange: (online: boolean) => void, // 连接状态变化回调

@@ -33,7 +33,7 @@
 ```bash
 cd server
 CGO_ENABLED=0 go build -o syncsrv .
-./syncsrv -addr :8282 -admin-token 你的令牌
+./syncsrv -addr :58282 -admin-token 你的令牌
 ```
 
 ### Docker 构建与启动
@@ -42,25 +42,25 @@ CGO_ENABLED=0 go build -o syncsrv .
 # 在仓库根目录
 docker compose up -d --build
 # 验证
-curl http://NAS的IP:8282/healthz    # 返回 ok
+curl http://NAS的IP:58282/healthz    # 返回 ok
 ```
 
-端口：默认 `8282`，在 `docker-compose.yml` 的 `ports` 里改。
+端口：默认 `58282`，在 `docker-compose.yml` 的 `ports` 里改。
 数据卷：`./data`（SQLite + 快照），备份这个目录即备份全部同步数据。
-管理后台：`http://NAS的IP:8282/admin`（令牌 = `SYNCSRV_ADMIN_TOKEN`）。
+管理后台：`http://NAS的IP:58282/admin`（令牌 = `SYNCSRV_ADMIN_TOKEN`）。
 
 ## 三、Lucky 反代配置（域名 + HTTPS + WebSocket）
 
 以 Lucky（飞牛常用反代工具）为例：
 
-1. 添加反向代理规则：域名如 `sync.example.com` → 后端 `127.0.0.1:8282`
+1. 添加反向代理规则：域名如 `sync.example.com` → 后端 `127.0.0.1:58282`
 2. **开启 WebSocket 支持**（关键，否则插件收不到远端推送；Lucky 里一般是"启用 WebSocket"开关，开启即可，反代会自动透传 `Upgrade` 头）
 3. 开启 HTTPS 证书（Lucky 自带 ACME 自动申请）；插件里地址填 `https://sync.example.com`
 4. 如果用 Nginx 反代，需要加：
 
 ```nginx
 location / {
-    proxy_pass http://127.0.0.1:8282;
+    proxy_pass http://127.0.0.1:58282;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;      # WebSocket 升级
     proxy_set_header Connection "upgrade";
@@ -100,7 +100,7 @@ iOS 思源与桌面端插件 API 一致。iOS 没有文件管理器直装插件�
 每台设备操作一次：
 
 1. 插件设置面板 → 填「同步服务地址」：
-   - 内网：`http://192.168.x.x:8282`
+   - 内网：`http://192.168.x.x:58282`
    - 外网域名：`https://sync.example.com`
 2. 填「管理令牌」（docker-compose 里的 `SYNCSRV_ADMIN_TOKEN`）和「设备名称」（如 `我的iPhone`）
 3. 点 **① 注册新设备** → 服务端分配设备密钥，自动填入
@@ -138,8 +138,8 @@ iOS 思源与桌面端插件 API 一致。iOS 没有文件管理器直装插件�
 | 现象 | 排查步骤 |
 |---|---|
 | 注册失败"管理令牌错误" | 核对 docker-compose 的 `SYNCSRV_ADMIN_TOKEN` 与插件里填的是否一致；改过要 `docker compose up -d` 重启 |
-| 推送失败/连接不上 | `curl http://NAS:8282/healthz` 先确认服务活着；检查插件地址有没有多写空格/斜杠 |
-| 收不到远端实时推送 | WS 问题：反代是否开启 WebSocket；直接试 `http://IP:8282` 内网地址对比；看服务端日志 `[hub] 设备 x 已连接` |
+| 推送失败/连接不上 | `curl http://NAS:58282/healthz` 先确认服务活着；检查插件地址有没有多写空格/斜杠 |
+| 收不到远端实时推送 | WS 问题：反代是否开启 WebSocket；直接试 `http://IP:58282` 内网地址对比；看服务端日志 `[hub] 设备 x 已连接` |
 | iOS 连不上 https | 证书是否有效（Let's Encrypt）；自签证书 iOS 会拒绝 |
 | 内容推送了但另一端没变 | 看服务端 `/admin` 变更日志有没有记录；有记录说明插件端 apply 失败，看思源开发者控制台报错 |
 | 新设备全量同步后块丢失 | 全量同步只还原服务端"最新块状态"；确认服务端收到过该设备的历史推送 |

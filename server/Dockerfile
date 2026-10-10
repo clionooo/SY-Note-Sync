@@ -16,6 +16,6 @@ WORKDIR /app
 COPY --from=builder /out/syncsrv /app/syncsrv
 # 数据目录（挂载卷持久化 sqlite 与快照）
 VOLUME /app/data
-EXPOSE 8282
+EXPOSE 58282
 ENTRYPOINT ["/app/syncsrv"]
-CMD ["-addr", ":8282", "-db", "/app/data/sync.db", "-data", "/app/data"]
+CMD ["-addr", ":58282", "-db", "/app/data/sync.db", "-data", "/app/data"]

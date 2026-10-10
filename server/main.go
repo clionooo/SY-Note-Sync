@@ -17,7 +17,7 @@ var adminFS embed.FS
 
 // 命令行/环境变量配置
 var (
-	cfgAddr       string // 监听地址，如 :8282
+	cfgAddr       string // 监听地址，如 :58282
 	cfgDBPath     string // sqlite 数据库文件路径
 	cfgDataDir    string // 快照等文件存储目录
 	cfgAdminToken string // Web 后台与设备注册的管理令牌
@@ -25,7 +25,7 @@ var (
 
 func main() {
 	// 优先取环境变量（方便 Docker 部署），否则取命令行参数，最后用默认值
-	flag.StringVar(&cfgAddr, "addr", envOr("SYNCSRV_ADDR", ":8282"), "HTTP 监听地址")
+	flag.StringVar(&cfgAddr, "addr", envOr("SYNCSRV_ADDR", ":58282"), "HTTP 监听地址")
 	flag.StringVar(&cfgDBPath, "db", envOr("SYNCSRV_DB", "data/sync.db"), "SQLite 数据库路径")
 	flag.StringVar(&cfgDataDir, "data", envOr("SYNCSRV_DATA", "data"), "快照数据目录")
 	flag.StringVar(&cfgAdminToken, "admin-token", envOr("SYNCSRV_ADMIN_TOKEN", "change-me"), "管理令牌（注册设备/进入 Web 后台）")

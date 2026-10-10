@@ -5,7 +5,7 @@ services:
     container_name: sy-note-sync
     restart: unless-stopped
     ports:
-      - "8282:8282"          # 左边改成你想要的宿主机端口
+      - "58282:58282"          # 左边改成你想要的宿主机端口
     environment:
       - SYNCSRV_ADMIN_TOKEN=请改成你的管理令牌   # 注册设备/进后台用，务必修改！
       - TZ=Asia/Shanghai
