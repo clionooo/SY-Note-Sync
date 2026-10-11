@@ -9,7 +9,21 @@ git clone https://github.com/clionooo/SY-Note-Sync.git
 cd SY-Note-Sync
 ```
 
-编辑 `docker-compose.yml`，把 `SYNCSRV_ADMIN_TOKEN` 改成你自己的令牌（**必须改**，默认值会打警告日志）：
+编辑 `docker-compose.yml`。管理令牌有三种用法：
+
+| 做法 | 效果 |
+|---|---|
+| 什么都不填（默认，`SYNCSRV_ADMIN_TOKEN` 注释掉） | **首次启动自动生成随机令牌**，打印在容器日志里，存进数据库，重启不变 |
+| 填 `SYNCSRV_ADMIN_TOKEN=你的口令` | 固定用你的口令（推荐自己部署时这么干） |
+| 填 `change-me` | 会被当成「没配」，走随机生成 |
+
+```bash
+docker compose up -d --build
+curl http://127.0.0.1:58282/healthz     # ok
+
+# 没配令牌时，这样看自动生成的那个：
+docker compose logs sy-note-sync | grep 管理令牌
+```
 
 ```yaml
 services:
@@ -17,19 +31,15 @@ services:
     build: ./server
     container_name: sy-note-sync
     restart: unless-stopped
-    user: "1000:1001"        # 以你的用户身份跑，数据文件属主正确、SMB 里能备份
+    user: "1000:1000"        # 以你的用户身份跑，数据文件属主正确、SMB 里能备份
     ports:
       - "58282:58282"
     environment:
-      - SYNCSRV_ADMIN_TOKEN=换成你自己的令牌
+      # 不配 = 随机生成；想固定就打开这行
+      # - SYNCSRV_ADMIN_TOKEN=你的口令
       - TZ=Asia/Shanghai
     volumes:
       - ./data:/app/data
-```
-
-```bash
-docker compose up -d --build
-curl http://127.0.0.1:58282/healthz     # ok
 ```
 
 ### 环境变量 / 启动参数
@@ -135,7 +145,7 @@ iOS / Android 思源没有「从文件装插件」的入口，两条路：
 |---|---|
 | 点「测试连接」失败 | 提示里带具体原因。先确认手机/电脑和 NAS 在同一网络，浏览器能打开 `http://<NAS IP>:58282/healthz` |
 | 提示「连不上服务端」 | 地址/端口写错、服务没起、被防火墙拦。注意地址**不要带末尾斜杠** |
-| 提示「管理令牌错误」 | 核对 `docker-compose.yml` 的 `SYNCSRV_ADMIN_TOKEN`，改完要 `docker compose up -d` 重建容器 |
+| 提示「管理令牌错误」 | 核对令牌：配了 `SYNCSRV_ADMIN_TOKEN` 就用那个；没配就用 `docker compose logs sy-note-sync \| grep 管理令牌` 打印的随机令牌。改完 compose 要 `docker compose up -d` 重建容器 |
 | 注册成功但同步不动 | 后台看设备是否「在线」。不在线说明 WebSocket 没连上（反代没开 WebSocket 是常见原因） |
 | 收不到实时推送 | 反代开 WebSocket；或先用内网 IP 直连排除反代问题 |
 | 改了笔记另一端没反应 | ① 后台「变更日志」有没有记录：有 → 推送成功，问题在接收端写回，看插件日志；② 接收端点一次「首次全量同步」兜底 |

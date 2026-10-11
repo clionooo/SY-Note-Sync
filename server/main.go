@@ -58,22 +58,49 @@ func envOr(key, def string) string {
 	return def
 }
 
+// resolveAdminToken 决定本次运行用的管理令牌。
+//
+//	优先级：命令行/环境变量 > 数据库里存过的 > 新生成的随机令牌
+//
+// 返回值第二项表示「是这次新生成的」（调用方会把它打印出来）。
+// 注意 "change-me" 这种占位值一律当作没配，免得有人照抄 compose 模板就直接上线。
+func resolveAdminToken(configured string) (string, bool) {
+	configured = strings.TrimSpace(configured)
+	if configured != "" && configured != "change-me" {
+		return configured, false
+	}
+	if saved := getSetting("admin_token", ""); saved != "" {
+		return saved, false
+	}
+	tok := randHex(16)
+	if err := setSetting("admin_token", tok); err != nil {
+		log.Printf("[warn] 保存自动生成的令牌失败（重启后会变）: %v", err)
+	}
+	return tok, true
+}
+
 func main() {
 	flag.StringVar(&cfgAddr, "addr", envOr("SYNCSRV_ADDR", ":58282"), "HTTP 监听地址")
 	flag.StringVar(&cfgDBPath, "db", envOr("SYNCSRV_DB", "data/sync.db"), "SQLite 数据库路径")
 	flag.StringVar(&cfgDataDir, "data", envOr("SYNCSRV_DATA", "data"), "数据目录")
-	flag.StringVar(&cfgAdminToken, "admin-token", envOr("SYNCSRV_ADMIN_TOKEN", "change-me"), "管理令牌（注册设备/进入后台）")
+	flag.StringVar(&cfgAdminToken, "admin-token", envOr("SYNCSRV_ADMIN_TOKEN", ""), "管理令牌（注册设备/进入后台）；留空则首次启动自动生成随机令牌")
 	flag.StringVar(&cfgBaseURL, "base-url", envOr("SYNCSRV_BASE_URL", ""), "对外访问地址（分享链接用），如 https://sync.example.com")
 	flag.Parse()
 
-	if cfgAdminToken == "change-me" {
-		log.Printf("[warn] 你还在用默认管理令牌，请通过 SYNCSRV_ADMIN_TOKEN 改掉！")
-	}
 	if err := initDB(cfgDBPath); err != nil {
 		log.Fatalf("[init] 打开数据库失败: %v", err)
 	}
 	if err := os.MkdirAll(cfgDataDir, 0o755); err != nil {
 		log.Fatalf("[init] 创建数据目录失败: %v", err)
+	}
+
+	// 管理令牌：显式配置优先；没配就用数据库里存过的；再没有就随机生成一个并持久化。
+	// 这样默认部署也是随机的（不会出现人尽皆知的默认口令），重启后还能保持同一个令牌。
+	var generated bool
+	cfgAdminToken, generated = resolveAdminToken(cfgAdminToken)
+	if generated {
+		log.Printf("[start] ⚠️ 未配置管理令牌，已自动生成随机令牌：%s", cfgAdminToken)
+		log.Printf("[start]    它已存进数据库 settings.admin_token，重启不会变；想换可在 docker-compose.yml 里设 SYNCSRV_ADMIN_TOKEN")
 	}
 
 	// 启动时清掉上次运行遗留的「在线」状态

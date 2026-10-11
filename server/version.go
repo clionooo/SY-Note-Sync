@@ -3,7 +3,7 @@ package main
 
 const (
 	// ServerVersion 服务端版本号（管理后台「关于」与 /api/version 会读它）
-	ServerVersion = "2.1.0"
+	ServerVersion = "2.1.1"
 
 	// ProtocolVersion 同步协议版本。插件与服务端会互相校验，避免版本错配导致静默失败
 	ProtocolVersion = 2

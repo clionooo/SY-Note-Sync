@@ -724,7 +724,10 @@ function renderSettings() {
           <div class="hint">只清理「自动」快照，手动创建的快照永远保留。</div></div>
         <div class="field"><label>管理令牌</label>
           <input class="input mono" value="${esc(S.data.adminTokenMasked || '')}" readonly>
-          <div class="hint">改令牌要改 docker-compose.yml 的 <code>SYNCSRV_ADMIN_TOKEN</code> 后重启容器。</div></div>
+          <div class="hint">令牌来自 <code>docker-compose.yml</code> 的 <code>SYNCSRV_ADMIN_TOKEN</code>；
+            没配的话服务端首次启动会自动生成一个随机令牌并打印在容器日志里
+            （<code>docker compose logs sy-note-sync | grep 管理令牌</code>），重启不会变。
+            改令牌要改 compose 后重建容器。</div></div>
         <button class="btn pri" id="stSave">保存设置</button>
       </div>
     </div>

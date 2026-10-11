@@ -25,7 +25,7 @@ import {
 import { SyncClient, BlockChange, ConflictInfo } from "./syncClient";
 import "./index.css";
 
-const PLUGIN_VERSION = "2.1.0";
+const PLUGIN_VERSION = "2.1.1";
 
 /** 插件配置（存在思源插件私有存储里） */
 interface Cfg {
@@ -703,7 +703,21 @@ export default class SYNoteSync extends Plugin {
     // 设置面板
     // ============================================================
 
+    /**
+     * 打开设置面板。
+     * 外面包一层 try/catch：面板里任何一个元素没找到都会让后面的监听器全部绑不上，
+     * 那种「点什么都没反应」的现象最难排查，所以宁可弹个明确的错误出来。
+     */
     openSetting(): void {
+        try {
+            this.buildSettingDialog();
+        } catch (e: any) {
+            console.error("[sy-note-sync] 设置面板渲染失败", e);
+            showMessage("SY Note Sync 设置面板渲染失败：" + ((e && e.message) || e), 8000, "error");
+        }
+    }
+
+    private buildSettingDialog(): void {
         const esc = (s: any) => String(s == null ? "" : s)
             .replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
         const cfg = this.cfg;
@@ -800,7 +814,12 @@ export default class SYNoteSync extends Plugin {
 </div>`;
 
         const dlg = new Dialog({ title: "SY Note Sync 设置", content: html, width: "620px" });
-        const q = (id: string) => dlg.element.querySelector("#" + id) as HTMLInputElement;
+        // ⚠️ 这里必须同时容忍 "scTest" 和 "#scTest" 两种写法。
+        // v2.1.0 踩过一次坑：调用处写成 q("#scTest")，而 q 内部又拼了一个 "#"，
+        // 变成 "##scTest" 直接抛 SyntaxError —— 而且它发生在绑定监听器的开头，
+        // 结果后面所有按钮的监听器全都没绑上，表现是「整个设置面板点什么都没反应」。
+        const q = (id: string) =>
+            dlg.element.querySelector(id.startsWith("#") ? id : "#" + id) as HTMLInputElement;
         const qa = (sel: string) => dlg.element.querySelector(sel) as HTMLElement;
 
         // ---- 分页签 ----

@@ -66,12 +66,14 @@
 ```bash
 git clone https://github.com/clionooo/SY-Note-Sync.git
 cd SY-Note-Sync
-# 改 docker-compose.yml 里的 SYNCSRV_ADMIN_TOKEN
 docker compose up -d --build
 curl http://<NAS的IP>:58282/healthz     # 返回 ok
+
+# 没配管理令牌时，服务端首次启动会自动生成一个随机令牌并打印出来：
+docker compose logs sy-note-sync | grep 管理令牌
 ```
 
-管理后台：`http://<NAS的IP>:58282/admin`（令牌 = `SYNCSRV_ADMIN_TOKEN`）
+管理后台：`http://<NAS的IP>:58282/admin`（令牌 = `SYNCSRV_ADMIN_TOKEN`，或上面日志里那个随机令牌）
 
 ### 2. 构建插件
 

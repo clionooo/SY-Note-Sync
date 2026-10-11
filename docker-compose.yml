@@ -9,15 +9,21 @@ services:
     build: ./server
     container_name: sy-note-sync
     restart: unless-stopped
-    # 以 clion:Users 运行，数据文件属主正确，SMB 里能直接备份
+    # 以你自己的用户身份跑，数据文件属主正确、SMB 里能直接备份
+    # （改成你的 uid:gid，例如 1000:1000）
     user: "1000:1001"
     ports:
       - "58282:58282"                        # 宿主机端口:容器端口
     environment:
-      # ⚠️ 务必改成你自己的管理令牌（注册设备 / 进后台都用它）
-      - SYNCSRV_ADMIN_TOKEN=change-me
+      # ── 管理令牌 ───────────────────────────────────────────────
+      # 留空 / 删掉这一行 = 首次启动自动生成一个随机令牌，并打印在容器日志里
+      #   docker compose logs sy-note-sync | grep 管理令牌
+      # 令牌会存进数据库（settings.admin_token），重启不会变。
+      # 想固定成自己的口令，就取消下面这行的注释并改掉：
+      # - SYNCSRV_ADMIN_TOKEN=改成你自己的令牌
+      #
       # 对外访问地址（可选）：配了之后后台里的分享链接会用它拼
       # - SYNCSRV_BASE_URL=https://sync.example.com
       - TZ=Asia/Shanghai
     volumes:
-      - ./data:/app/data                     # SQLite + 快照持久化目录
+      - ./data:/app/data                     # SQLite + 快照 + 附件持久化目录
