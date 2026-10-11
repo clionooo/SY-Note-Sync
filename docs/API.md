@@ -142,6 +142,35 @@ ws://<host>/api/ws?device_key=<设备密钥>
 
 ---
 
+## 附件同步（设备侧）
+
+附件用**相对路径**做键（如 `assets/2026/10/xxx.png`，相对于思源工作空间的 `data` 目录）。
+文件本体存在服务端 `<数据目录>/files/<path>`，数据库只存元信息。
+
+| 方法 | 路径 | 请求 | 说明 |
+|---|---|---|---|
+| POST | `/api/asset/check` | `{paths:[...]}` → `{missing:[...], total}` | 问服务端缺哪些，客户端只传缺的 |
+| POST | `/api/asset/upload` | multipart：`path` + `file` | 上传单个附件，返回 `{ok,path,size,hash}` |
+| GET/POST | `/api/asset/download?path=...` | — | 返回文件字节流；404 表示服务端没有 |
+| POST | `/api/asset/list` | `{}` → `{assets:[{path,size,hash,updated}]}` | 新设备首次同步时列全部附件 |
+| POST | `/api/asset/delete` | `{paths:[...]}` | 删除（同时删磁盘文件并广播 `asset_removed`） |
+
+约束：
+
+- 只接受 `assets/` 开头的路径，会挡路径穿越（`..`、绝对路径、`\0`）
+- 单个附件上限 200MB，超了返回 413
+- 上传成功会向其他在线设备广播 `asset_added`
+
+管理后台侧：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/admin/assets?limit=500` | 列出附件 + 总数/总字节 |
+| GET | `/api/admin/asset/download?path=...` | 后台直接下载/预览 |
+| POST | `/api/admin/asset/delete` | `{paths:[...]}` 删除 |
+
+---
+
 ## 管理后台侧
 
 鉴权：请求头 `X-Admin-Token: <令牌>`，或 URL 参数 `?token=<令牌>`。
@@ -247,5 +276,6 @@ ws://<host>/api/admin/ws?token=<管理令牌>
 | `conflicts` | 未解决/已解决的冲突（直接存两份内容） |
 | `snapshots` / `snapshot_blocks` | 快照与快照时刻的块状态 |
 | `shares` | 分享链接（token、密码、访问数、有效期） |
+| `assets` | 附件元信息（路径、大小、sha256、类型）；文件本体在 `<数据目录>/files/` 下 |
 | `notebooks` / `docs` | 插件上报的目录结构 |
 | `settings` | 服务端设置 |

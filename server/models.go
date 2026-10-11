@@ -174,6 +174,8 @@ type Stats struct {
 	Notebooks  int64 `json:"notebooks"`
 	Docs       int64 `json:"docs"`
 	Shares     int64 `json:"shares"`
+	Assets     int64 `json:"assets"`
+	AssetBytes int64 `json:"assetBytes"`
 	DBBytes    int64 `json:"dbBytes"`
 	LastChange int64 `json:"lastChange"`
 }
@@ -182,4 +184,17 @@ type Stats struct {
 type SettingKV struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+// Asset 附件（图片/音频/视频等非块内容）
+//
+// Path 是相对于思源工作空间 data 目录的路径，例如 "assets/2026/10/xxx.png"。
+// 服务端把文件本体存在 <数据目录>/files/<Path>，数据库只存元信息。
+type Asset struct {
+	Path     string `json:"path"`
+	Size     int64  `json:"size"`
+	Hash     string `json:"hash,omitempty"` // sha256，用于「内容变了要重传」的判断
+	Mime     string `json:"mime,omitempty"`
+	DeviceID int64  `json:"deviceId,omitempty"`
+	Updated  int64  `json:"updated"`
 }

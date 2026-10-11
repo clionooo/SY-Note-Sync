@@ -1,6 +1,6 @@
 {
   "name": "sy-note-sync",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "SY Note Sync - SiYuan note sync plugin",
   "type": "module",
   "scripts": {

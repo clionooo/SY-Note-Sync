@@ -78,6 +78,8 @@ export interface ClientHooks {
     onRev?: (rev: number) => void;
     /** 服务端要求重新全量同步（例如后台回滚了快照） */
     onReload?: (reason: string) => void;
+    /** 附件事件：kind = asset_added / asset_removed */
+    onAssetEvent?: (kind: string, data: any) => void;
     onLog?: (level: "info" | "warn" | "error", msg: string) => void;
 }
 
@@ -228,6 +230,53 @@ export class SyncClient {
     blockHistory(blockId: string) { return this.post<{ history: HistoryItem[] }>("/api/block/history", { blockId }); }
     restoreBlock(changeId: number) { return this.post<{ ok: boolean; block: BlockChange }>("/api/block/restore", { changeId }); }
 
+    // ---------------- 附件 ----------------
+    /** 问服务端缺哪些附件（只传缺的，省流量） */
+    assetCheck(paths: string[]): Promise<{ missing: string[]; total: number }> {
+        return this.post("/api/asset/check", { paths }, 30000);
+    }
+
+    /** 上传一个附件（multipart，不能用 post 的 JSON 通道） */
+    async assetUpload(path: string, blob: Blob, timeout = 120000): Promise<{ ok: boolean; size: number }> {
+        const url = this.serverUrl + "/api/asset/upload";
+        const fd = new FormData();
+        fd.append("path", path);
+        fd.append("file", blob, path.split("/").pop() || "asset");
+        let res: Response;
+        try {
+            res = await fetchTimeout(url, {
+                method: "POST",
+                headers: { "X-Device-Key": this.deviceKey },
+                body: fd,
+            }, timeout);
+        } catch (e: any) {
+            throw new Error(humanError(e, url));
+        }
+        let data: any = null;
+        try { data = await res.json(); } catch { /* ignore */ }
+        if (!res.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
+        return data;
+    }
+
+    /** 下载附件，返回二进制；服务端没有时返回 null */
+    async assetDownload(path: string, timeout = 120000): Promise<Blob | null> {
+        const url = this.serverUrl + "/api/asset/download?path=" + encodeURIComponent(path);
+        let res: Response;
+        try {
+            res = await fetchTimeout(url, { method: "GET", headers: { "X-Device-Key": this.deviceKey } }, timeout);
+        } catch (e: any) {
+            throw new Error(humanError(e, url));
+        }
+        if (res.status === 404) return null;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.blob();
+    }
+
+    /** 列出服务端全部附件（新设备首次同步用） */
+    assetList(): Promise<{ assets: { path: string; size: number; hash?: string; updated: number }[] }> {
+        return this.post("/api/asset/list", {}, 30000);
+    }
+
     // ---------------- WebSocket ----------------
     connect() {
         if (!this.serverUrl || !this.deviceKey) return;
@@ -266,6 +315,8 @@ export class SyncClient {
                 if (this.hooks.onRemoteChange) this.hooks.onRemoteChange(c);
             } else if (msg.type === "reload") {
                 if (this.hooks.onReload) this.hooks.onReload(msg.reason || "");
+            } else if (msg.type === "asset_added" || msg.type === "asset_removed") {
+                if (this.hooks.onAssetEvent) this.hooks.onAssetEvent(msg.type, msg.data || msg.paths);
             } else if (msg.type === "hello") {
                 this.setRev(msg.latest || 0);
             }

@@ -98,6 +98,12 @@ func main() {
 	mux.HandleFunc("/api/trash", authDevice(handleTrash))
 	mux.HandleFunc("/api/block/history", authDevice(handleBlockHistory))
 	mux.HandleFunc("/api/block/restore", authDevice(handleBlockRestore))
+	// 附件（图片/音频/视频）
+	mux.HandleFunc("/api/asset/check", authDevice(handleAssetCheck))
+	mux.HandleFunc("/api/asset/upload", authDevice(handleAssetUpload))
+	mux.HandleFunc("/api/asset/download", authDevice(handleAssetDownload))
+	mux.HandleFunc("/api/asset/list", authDevice(handleAssetList))
+	mux.HandleFunc("/api/asset/delete", authDevice(handleAssetDelete))
 
 	// ---------- 管理后台 ----------
 	mux.HandleFunc("/api/admin/data", authAdmin(handleAdminData))
@@ -122,6 +128,9 @@ func main() {
 	mux.HandleFunc("/api/admin/shares", authAdmin(handleAdminShares))
 	mux.HandleFunc("/api/admin/share/create", authAdmin(handleAdminShareCreate))
 	mux.HandleFunc("/api/admin/share/delete", authAdmin(handleAdminShareDelete))
+	mux.HandleFunc("/api/admin/assets", authAdmin(handleAdminAssets))
+	mux.HandleFunc("/api/admin/asset/delete", authAdmin(handleAdminAssetDelete))
+	mux.HandleFunc("/api/admin/asset/download", authAdmin(handleAdminAssetDownload))
 	mux.HandleFunc("/api/admin/settings", authAdmin(handleAdminSettings))
 	mux.HandleFunc("/api/admin/export", authAdmin(handleAdminExport))
 	mux.HandleFunc("/api/admin/ws", handleAdminWS)

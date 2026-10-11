@@ -25,7 +25,7 @@ import {
 import { SyncClient, BlockChange, ConflictInfo } from "./syncClient";
 import "./index.css";
 
-const PLUGIN_VERSION = "2.0.0";
+const PLUGIN_VERSION = "2.1.0";
 
 /** 插件配置（存在思源插件私有存储里） */
 interface Cfg {
@@ -38,6 +38,10 @@ interface Cfg {
     debounceMs: number;
     excludeNotebooks: string[];
     reportMeta: boolean;
+    /** 是否同步附件（图片/音频/视频等 assets/ 下的文件） */
+    syncAssets: boolean;
+    /** 单个附件大小上限（MB），超过的不传，避免把 NAS 塞爆 */
+    maxAssetMB: number;
 }
 
 const DEFAULT_CFG: Cfg = {
@@ -50,6 +54,8 @@ const DEFAULT_CFG: Cfg = {
     debounceMs: 3000,
     excludeNotebooks: [],
     reportMeta: true,
+    syncAssets: true,
+    maxAssetMB: 50,
 };
 
 interface LogLine { t: number; level: "info" | "warn" | "error"; msg: string; }
@@ -185,6 +191,15 @@ export default class SYNoteSync extends Plugin {
                     this.log("warn", "服务端要求重新全量同步: " + reason);
                     void this.fullSync(true);
                 },
+                onAssetEvent: (kind, data) => {
+                    if (!this.cfg.syncAssets) return;
+                    if (kind === "asset_added" && data && data.path) {
+                        void this.downloadAssets([data.path], true);
+                    } else if (kind === "asset_removed") {
+                        // 只记日志，不删本地文件 —— 免得误删用户还在用的素材
+                        this.log("info", "服务端移除了附件（本地保留）: " + JSON.stringify(data));
+                    }
+                },
                 onLog: (level, msg) => this.log(level, msg),
             },
             this.lastRev,
@@ -258,6 +273,12 @@ export default class SYNoteSync extends Plugin {
             return;
         }
         await this.resolveMissingDocs();
+        // 附件先传：等块推过去时，服务端已经有它引用的图片了
+        if (this.cfg.syncAssets) {
+            const set = new Set<string>();
+            for (const c of this.pending.values()) this.extractAssets(c.content).forEach(p => set.add(p));
+            if (set.size) await this.uploadAssets(Array.from(set), true);
+        }
         const changes = Array.from(this.pending.values());
         this.pending.clear();
         this.st.pending = 0;
@@ -286,8 +307,7 @@ export default class SYNoteSync extends Plugin {
     }
 
     /**
-     * 补齐 docId / notebookId。
-     *
+     * 补齐 docId / notebookId。     *
      * 思源的 update / delete 事务里 parentID 通常是空的（只有 insert 才带），
      * 所以按块 ID 反查一次内核的 blocks 表，把 root_id 和 box 填上。
      * 一次 SQL 查完整批，不是每个块查一次。
@@ -317,6 +337,165 @@ export default class SYNoteSync extends Plugin {
     }
 
     // ============================================================
+    // 附件同步（图片 / 音频 / 视频等 assets/ 下的文件）
+    // ============================================================
+    //
+    // 思路：块里以 "assets/xxx.png" 的形式引用附件，所以从块的 DOM 里就能扫出
+    // 这篇文档用到了哪些附件。推送前先问服务端缺哪些（只传缺的），
+    // 收到远端变更后再检查本地缺哪些（只下缺的）。
+
+    /** 从块 DOM / markdown 里扫出附件相对路径 */
+    private extractAssets(content: string): string[] {
+        if (!content) return [];
+        const out = new Set<string>();
+        // 覆盖 src="assets/.."、![](assets/..)、url(assets/..)、data-src="assets/.."
+        const re = /assets\/[^"'\s)<>\\\]]+/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(content)) !== null) {
+            let p = m[0];
+            // 去掉结尾常见的标点，避免把 markdown 的 ) 或 HTML 的引号带进来
+            p = p.replace(/[.,;:!?]+$/, "");
+            try { p = decodeURIComponent(p); } catch { /* 保持原样 */ }
+            if (p.length > 7) out.add(p);
+        }
+        return Array.from(out);
+    }
+
+    /** 读本地附件（走思源内核的原始文件 API） */
+    private async readLocalAsset(rel: string): Promise<Blob | null> {
+        try {
+            const res = await fetch("/api/file/getFile", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ path: "/data/" + rel }),
+            });
+            if (!res.ok) return null;
+            const ct = res.headers.get("content-type") || "";
+            // 内核找不到文件时会返回 JSON 错误体，别把它当成附件存下来
+            if (ct.includes("application/json")) return null;
+            return await res.blob();
+        } catch {
+            return null;
+        }
+    }
+
+    /** 写本地附件（走思源内核的 putFile） */
+    private async writeLocalAsset(rel: string, blob: Blob): Promise<boolean> {
+        try {
+            const fd = new FormData();
+            fd.append("path", "/data/" + rel);
+            fd.append("isDir", "false");
+            fd.append("file", blob, rel.split("/").pop() || "asset");
+            const res = await fetch("/api/file/putFile", { method: "POST", body: fd });
+            const j = await res.json().catch(() => null);
+            if (j && j.code === 0) return true;
+            this.log("warn", `写入附件 ${rel} 失败: ${(j && j.msg) || res.status}`);
+            return false;
+        } catch (e: any) {
+            this.log("warn", `写入附件 ${rel} 异常: ${e && e.message}`);
+            return false;
+        }
+    }
+
+    /** 把一批附件传到服务端（只传服务端没有的） */
+    async uploadAssets(paths: string[], silent = true): Promise<{ ok: number; fail: number; skip: number }> {
+        const res = { ok: 0, fail: 0, skip: 0 };
+        if (!this.client || !this.cfg.syncAssets || !paths.length) return res;
+        let missing: string[] = [];
+        try {
+            const r = await this.client.assetCheck(paths);
+            missing = r.missing || [];
+        } catch (e: any) {
+            this.log("warn", "附件检查失败: " + (e && e.message));
+            return res;
+        }
+        if (!missing.length) return res;
+        this.log("info", `发现 ${missing.length} 个附件需要上传`);
+        for (const rel of missing) {
+            const blob = await this.readLocalAsset(rel);
+            if (!blob) { res.skip++; continue; }
+            if (blob.size > this.cfg.maxAssetMB * 1024 * 1024) {
+                res.skip++;
+                this.log("warn", `跳过超大附件 ${rel}（${(blob.size / 1048576).toFixed(1)}MB > 上限 ${this.cfg.maxAssetMB}MB）`);
+                continue;
+            }
+            try {
+                await this.client.assetUpload(rel, blob);
+                res.ok++;
+            } catch (e: any) {
+                res.fail++;
+                this.log("warn", `上传附件 ${rel} 失败: ${e && e.message}`);
+            }
+        }
+        if (!silent) {
+            showMessage(`附件上传：成功 ${res.ok}，跳过 ${res.skip}，失败 ${res.fail}`, 4000);
+        }
+        this.log("info", `附件上传完成：成功 ${res.ok}，跳过 ${res.skip}，失败 ${res.fail}`);
+        return res;
+    }
+
+    /** 从服务端拉取缺失的附件到本地 */
+    async downloadAssets(paths: string[], silent = true): Promise<{ ok: number; fail: number }> {
+        const res = { ok: 0, fail: 0 };
+        if (!this.client || !this.cfg.syncAssets || !paths.length) return res;
+        const need: string[] = [];
+        for (const rel of paths) {
+            if (!(await this.readLocalAsset(rel))) need.push(rel); // 本地没有才下
+        }
+        if (!need.length) return res;
+        this.log("info", `发现 ${need.length} 个附件需要下载`);
+        for (const rel of need) {
+            try {
+                const blob = await this.client.assetDownload(rel);
+                if (!blob) continue; // 服务端也没有，正常
+                if (await this.writeLocalAsset(rel, blob)) res.ok++;
+                else res.fail++;
+            } catch (e: any) {
+                res.fail++;
+                this.log("warn", `下载附件 ${rel} 失败: ${e && e.message}`);
+            }
+        }
+        if (!silent) showMessage(`附件下载：成功 ${res.ok}，失败 ${res.fail}`, 4000);
+        this.log("info", `附件下载完成：成功 ${res.ok}，失败 ${res.fail}`);
+        return res;
+    }
+
+    /** 全量上传：把本地 assets/ 下所有文件都推上去（服务端空库时用） */
+    async uploadAllAssets() {
+        if (!this.client) { showMessage("请先完成连接配置", 3000, "error"); return; }
+        if (!this.cfg.syncAssets) { showMessage("附件同步已关闭，请先在设置里打开", 3000, "error"); return; }
+        showMessage("正在扫描本地附件…", 2500);
+        try {
+            const rows = await this.sql("SELECT path FROM assets ORDER BY path LIMIT 20000");
+            const paths = (rows || [])
+                .map((r: any) => String(r.path || "").replace(/^\/+/, ""))
+                .filter((p: string) => p.startsWith("assets/"));
+            if (!paths.length) { showMessage("本地没有附件", 2500); return; }
+            await this.uploadAssets(paths, false);
+        } catch (e: any) {
+            // 有些版本没有 assets_files 视图，退回按块内容里扫到的附件
+            this.log("warn", "列附件表失败，改为按块内容扫描: " + (e && e.message));
+            const docs = await this.sql("SELECT content FROM blocks WHERE type='d' LIMIT 3000");
+            const set = new Set<string>();
+            for (const d of docs || []) this.extractAssets(d.content || "").forEach(p => set.add(p));
+            await this.uploadAssets(Array.from(set), false);
+        }
+    }
+
+    /** 全量同步时把服务端所有附件补齐到本地 */
+    async downloadAllAssets() {
+        if (!this.client || !this.cfg.syncAssets) return;
+        try {
+            const r = await this.client.assetList();
+            const paths = (r.assets || []).map(a => a.path);
+            if (!paths.length) return;
+            await this.downloadAssets(paths, true);
+        } catch (e: any) {
+            this.log("warn", "拉取附件列表失败: " + (e && e.message));
+        }
+    }
+
+    // ============================================================
     // 远端变更 -> 写回本地
     // ============================================================
     private async applyRemoteChange(c: BlockChange) {
@@ -338,6 +517,11 @@ export default class SYNoteSync extends Plugin {
             }
             if (c.rev) this.blockRevs[c.blockId] = c.rev;
             this.st.lastPull = Date.now();
+            // 块写回来了，顺手把它引用的附件补齐（不阻塞主流程）
+            if (this.cfg.syncAssets && c.content) {
+                const refs = this.extractAssets(c.content);
+                if (refs.length) void this.downloadAssets(refs, true);
+            }
         } catch (e: any) {
             this.log("warn", `写回块 ${c.blockId} 失败: ${e && e.message}`);
         } finally {
@@ -381,6 +565,8 @@ export default class SYNoteSync extends Plugin {
             }
             this.st.lastPull = Date.now();
             this.log("info", `全量同步完成：写入 ${ok} 个块${fail ? `，失败 ${fail}` : ""}`);
+            // 块拉完再把附件补齐
+            await this.downloadAllAssets();
             if (!silent) showMessage(`SY Note Sync：全量同步完成，写入 ${ok} 个块`, 4000);
         } catch (e: any) {
             this.log("error", "全量同步失败: " + e.message);
@@ -451,6 +637,8 @@ export default class SYNoteSync extends Plugin {
             this.st.lastPush = Date.now();
             this.log("info", `全量上传完成：成功 ${ok} 篇${fail ? `，失败 ${fail} 篇` : ""}`);
             showMessage(`SY Note Sync：全量上传完成，${ok} 篇文档${fail ? `，失败 ${fail} 篇（见日志）` : ""}`, 5000);
+            // 文档推完再把附件一起传上去
+            if (this.cfg.syncAssets) await this.uploadAllAssets();
         } catch (e: any) {
             this.log("error", "全量上传失败: " + e.message);
             showMessage("SY Note Sync：全量上传失败 - " + e.message, 5000, "error");
@@ -562,6 +750,10 @@ export default class SYNoteSync extends Plugin {
       <button class="b3-button b3-button--outline" id="scPause">${cfg.paused ? "已暂停（点此恢复）" : "未暂停"}</button></div>
     <div class="sc-row"><span>上报笔记本结构</span>
       <button class="b3-button b3-button--outline" id="scMeta">${cfg.reportMeta ? "已开启" : "已关闭"}</button></div>
+    <div class="sc-row"><span>附件同步（图片 / 音视频）</span>
+      <button class="b3-button b3-button--outline" id="scAssets">${cfg.syncAssets ? "已开启" : "已关闭"}</button></div>
+    <div class="sc-field"><label>单个附件大小上限（MB，超过的不传）</label>
+      <input id="scMaxAsset" class="b3-text-field sc-full" type="number" value="${cfg.maxAssetMB}"></div>
     <div class="sc-field"><label>防抖延迟（毫秒，改完多久自动推送）</label>
       <input id="scDeb" class="b3-text-field sc-full" type="number" value="${cfg.debounceMs}"></div>
     <div class="sc-field"><label>排除同步的笔记本（每行一个笔记本 ID，留空=全部同步）</label>
@@ -570,6 +762,7 @@ export default class SYNoteSync extends Plugin {
       <button class="b3-button b3-button--text" id="scNow">立即同步</button>
       <button class="b3-button b3-button--outline" id="scFull">首次全量同步（拉回本机）</button>
       <button class="b3-button b3-button--outline" id="scUpload">全量上传本机内容</button>
+      <button class="b3-button b3-button--outline" id="scUploadAssets">全量上传附件</button>
       <button class="b3-button b3-button--outline" id="scSnap">创建服务端快照</button>
     </div>
     <div class="sc-help" style="margin-top:12px">
@@ -745,6 +938,16 @@ export default class SYNoteSync extends Plugin {
         q("#scNow").addEventListener("click", () => void this.syncNow(true));
         q("#scFull").addEventListener("click", () => void this.fullSync(false));
         q("#scUpload").addEventListener("click", () => void this.fullUpload());
+        q("#scUploadAssets").addEventListener("click", () => void this.uploadAllAssets());
+        q("#scAssets").addEventListener("click", async (e) => {
+            this.cfg.syncAssets = !this.cfg.syncAssets;
+            (e.target as HTMLElement).textContent = this.cfg.syncAssets ? "已开启" : "已关闭";
+            await this.saveCfg();
+        });
+        q("#scMaxAsset").addEventListener("change", async () => {
+            this.cfg.maxAssetMB = Math.max(1, Number(q("#scMaxAsset").value) || 50);
+            await this.saveCfg();
+        });
         q("#scSnap").addEventListener("click", async () => {
             if (!this.client) { showMessage("请先完成连接配置", 2500, "error"); return; }
             try {

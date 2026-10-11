@@ -131,6 +131,7 @@ const PAGES = [
   { id: 'devices', name: '设备', ico: '📱', group: '同步' },
   { id: 'logs', name: '变更日志', ico: '≡', group: '同步' },
   { id: 'notebooks', name: '笔记本', ico: '📚', group: '同步' },
+  { id: 'assets', name: '附件', ico: '🖼', group: '同步' },
   { id: 'conflicts', name: '冲突', ico: '⚡', group: '数据' },
   { id: 'snapshots', name: '快照', ico: '◈', group: '数据' },
   { id: 'trash', name: '回收站', ico: '🗑', group: '数据' },
@@ -173,6 +174,7 @@ async function route() {
       case 'devices': return renderDevices();
       case 'logs': return renderLogs();
       case 'notebooks': return renderNotebooks();
+      case 'assets': return renderAssets();
       case 'conflicts': return renderConflicts();
       case 'snapshots': return renderSnapshots();
       case 'trash': return renderTrash();
@@ -221,6 +223,7 @@ function renderOverview() {
       <div class="stat"><div class="k">📚 笔记本 / 文档</div><div class="v">${st.notebooks}<span style="font-size:16px;color:var(--text-3)"> / ${st.docs}</span></div><div class="s">由插件上报</div></div>
       <div class="stat"><div class="k">◈ 快照</div><div class="v">${st.snapshots}</div><div class="s">可整库回滚</div></div>
       <div class="stat"><div class="k">🔗 分享</div><div class="v">${st.shares}</div><div class="s">公开只读链接</div></div>
+      <div class="stat"><div class="k">🖼 附件</div><div class="v">${st.assets || 0}</div><div class="s">合计 ${bytes(st.assetBytes || 0)}</div></div>
       <div class="stat"><div class="k">💾 数据库</div><div class="v" style="font-size:19px">${bytes(st.dbBytes)}</div><div class="s">SQLite</div></div>
     </div>
 
@@ -453,6 +456,53 @@ async function showDoc(docId) {
     <div class="hint" style="margin-bottom:10px">共 ${blocks.length} 个块（显示的是块内纯文本）</div>${html}`,
     `<button class="btn" onclick="closeModal()">关闭</button>
      <button class="btn pri" onclick="shareDialog('', '${esc(docId)}')">生成分享链接</button>`, true);
+}
+
+// ---------------- 附件 ----------------
+function isImage(p) { return /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(p); }
+
+function renderAssets() {
+  $('view').innerHTML = `
+    <div class="toolbar">
+      <input id="asQ" class="input" style="max-width:260px" placeholder="按路径筛选">
+      <button class="btn" id="asReload">刷新</button>
+      <div class="spacer"></div>
+      <span class="hint" style="margin:0" id="asSummary">加载中…</span>
+    </div>
+    <div class="card"><div class="card-body tight"><div class="tbl-wrap"><table><thead><tr>
+      <th style="width:64px">预览</th><th>路径</th><th>大小</th><th>类型</th><th>更新时间</th><th>操作</th>
+    </tr></thead><tbody id="asBody"><tr><td colspan="6"><div class="empty">加载中…</div></td></tr></tbody></table></div></div></div>`;
+
+  const load = async () => {
+    const r = await api('/api/admin/assets?limit=2000');
+    const kw = ($('asQ').value || '').trim().toLowerCase();
+    const list = (r.assets || []).filter(a => !kw || a.path.toLowerCase().includes(kw));
+    $('asSummary').textContent = `共 ${r.count} 个附件 · 合计 ${bytes(r.bytes)}${kw ? ` · 筛选出 ${list.length} 个` : ''}`;
+    $('asBody').innerHTML = list.map(a => `
+      <tr>
+        <td>${isImage(a.path)
+          ? `<img src="/api/admin/asset/download?path=${encodeURIComponent(a.path)}&token=${encodeURIComponent(S.token)}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--border)" loading="lazy">`
+          : '<span class="tag">文件</span>'}</td>
+        <td class="mono" style="word-break:break-all">${esc(a.path)}</td>
+        <td class="nowrap">${bytes(a.size)}</td>
+        <td class="nowrap">${esc((a.mime || '').split('/')[1] || '—')}</td>
+        <td class="nowrap">${ts(a.updated)}</td>
+        <td class="nowrap">
+          <a class="btn sm" href="/api/admin/asset/download?path=${encodeURIComponent(a.path)}&token=${encodeURIComponent(S.token)}" target="_blank">打开</a>
+          <button class="btn sm danger" data-adel="${esc(a.path)}">删除</button>
+        </td>
+      </tr>`).join('') || `<tr><td colspan="6"><div class="empty"><span class="big">🖼</span>还没有附件。<br>在思源里插入图片后，插件会自动把图片传到服务端。</div></td></tr>`;
+    $('asBody').querySelectorAll('[data-adel]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('删除服务端附件 ' + b.dataset.adel + ' ？\n（只从服务端移除，各设备本地已下载的文件会保留）')) return;
+        await api('/api/admin/asset/delete', { method: 'POST', body: { paths: [b.dataset.adel] } });
+        toast('已删除', 'ok'); load();
+      };
+    });
+  };
+  $('asQ').oninput = load;
+  $('asReload').onclick = load;
+  load();
 }
 
 // ---------------- 冲突 ----------------

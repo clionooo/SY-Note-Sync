@@ -2,7 +2,7 @@
   "name": "sy-note-sync",
   "author": "clionooo",
   "url": "https://github.com/clionooo/SY-Note-Sync",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "minAppVersion": "3.0.0",
   "backends": ["all"],
   "frontends": ["all"],

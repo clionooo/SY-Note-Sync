@@ -142,6 +142,14 @@ func initDB(path string) error {
 			key   TEXT PRIMARY KEY,
 			value TEXT NOT NULL DEFAULT ''
 		)`,
+		`CREATE TABLE IF NOT EXISTS assets(
+			path      TEXT PRIMARY KEY,
+			size      INTEGER NOT NULL DEFAULT 0,
+			hash      TEXT NOT NULL DEFAULT '',
+			mime      TEXT NOT NULL DEFAULT '',
+			device_id INTEGER NOT NULL DEFAULT 0,
+			updated   INTEGER NOT NULL DEFAULT 0
+		)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
@@ -926,6 +934,68 @@ func allSettings() map[string]string {
 	return out
 }
 
+// ==================== 附件 ====================
+
+func upsertAsset(a Asset) error {
+	_, err := db.Exec(`INSERT INTO assets(path,size,hash,mime,device_id,updated) VALUES(?,?,?,?,?,?)
+		ON CONFLICT(path) DO UPDATE SET
+			size=excluded.size, hash=excluded.hash, mime=excluded.mime,
+			device_id=excluded.device_id, updated=excluded.updated`,
+		a.Path, a.Size, a.Hash, a.Mime, a.DeviceID, a.Updated)
+	return err
+}
+
+func getAsset(path string) (Asset, bool) {
+	var a Asset
+	err := db.QueryRow(`SELECT path,size,hash,mime,device_id,updated FROM assets WHERE path=?`, path).
+		Scan(&a.Path, &a.Size, &a.Hash, &a.Mime, &a.DeviceID, &a.Updated)
+	if err != nil {
+		return a, false
+	}
+	return a, true
+}
+
+func listAssets(limit int) ([]Asset, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 2000
+	}
+	rows, err := db.Query(`SELECT path,size,hash,mime,device_id,updated FROM assets
+		ORDER BY updated DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Asset{}
+	for rows.Next() {
+		var a Asset
+		if rows.Scan(&a.Path, &a.Size, &a.Hash, &a.Mime, &a.DeviceID, &a.Updated) == nil {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+// missingAssets 返回服务端没有（或哈希对不上）的路径，客户端据此决定要传哪些
+func missingAssets(paths []string) []string {
+	out := []string{}
+	for _, p := range paths {
+		if _, ok := getAsset(p); !ok {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func deleteAsset(path string) error {
+	_, err := db.Exec(`DELETE FROM assets WHERE path=?`, path)
+	return err
+}
+
+func assetStats() (count, bytes int64) {
+	db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(size),0) FROM assets`).Scan(&count, &bytes)
+	return
+}
+
 // ==================== 统计 ====================
 
 // osStat 返回文件字节数（数据库文件大小，看板用）
@@ -948,6 +1018,7 @@ func stats(dbPath string) Stats {
 	db.QueryRow(`SELECT COUNT(*) FROM notebooks`).Scan(&s.Notebooks)
 	db.QueryRow(`SELECT COUNT(*) FROM docs WHERE deleted=0`).Scan(&s.Docs)
 	db.QueryRow(`SELECT COUNT(*) FROM shares`).Scan(&s.Shares)
+	s.Assets, s.AssetBytes = assetStats()
 	db.QueryRow(`SELECT COALESCE(MAX(ts),0) FROM changes`).Scan(&s.LastChange)
 	if fi, err := osStat(dbPath); err == nil {
 		s.DBBytes = fi
