@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>SY Note Sync · 管理后台</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%234f46e5'/><text y='68' x='50' font-size='56' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>S</text></svg>">
+<link rel="stylesheet" href="/web/admin.css">
+</head>
+<body>
+
+<!-- 令牌登录遮罩：没有令牌时挡住整个界面 -->
+<div id="gate" class="modal-mask" style="display:none">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-head"><h3>SY Note Sync · 管理后台</h3></div>
+    <div class="modal-body">
+      <div class="field">
+        <label>管理令牌</label>
+        <input id="gateToken" class="input" type="password" placeholder="部署时设置的 SYNCSRV_ADMIN_TOKEN">
+        <div class="hint">令牌保存在浏览器本地（localStorage），不会上传到任何地方。它等于部署时 docker-compose.yml 里的 <code>SYNCSRV_ADMIN_TOKEN</code>。</div>
+      </div>
+      <div id="gateErr" class="hint" style="color:var(--danger)"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn pri" id="gateBtn">进入后台</button>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+  <!-- 侧边栏 -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">S</div>
+      <div>
+        <div class="brand-name">SY Note Sync</div>
+        <div class="brand-sub">思源笔记同步服务</div>
+      </div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidebar-foot" id="sideFoot"></div>
+  </aside>
+
+  <!-- 主区域 -->
+  <div class="main">
+    <header class="topbar">
+      <h1 id="pageTitle">概览</h1>
+      <div class="spacer"></div>
+      <span class="conn"><span class="dot" id="wsDot"></span><span id="wsText">连接中…</span></span>
+      <button class="btn icon" id="themeBtn" title="切换深浅色">🌙</button>
+      <button class="btn icon" id="refreshBtn" title="刷新">⟳</button>
+    </header>
+    <div class="content" id="view"></div>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toasts"></div>
+
+<script src="/web/admin.js"></script>
+</body>
+</html>

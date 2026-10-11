@@ -1,0 +1,23 @@
+# 依赖与构建产物
+node_modules/
+plugin/dist/
+server/syncsrv
+dist/*.zip
+
+# 运行时数据
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# 临时图片（截图等，不属于项目内容）
+IMG_*.PNG
+IMG_*.png
+IMG_*.jpg
+IMG_*.jpeg

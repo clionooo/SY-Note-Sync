@@ -1,0 +1,18 @@
+{
+  "name": "sy-note-sync",
+  "author": "clionooo",
+  "url": "https://github.com/clionooo/SY-Note-Sync",
+  "version": "2.0.0",
+  "minAppVersion": "3.0.0",
+  "backends": ["all"],
+  "frontends": ["all"],
+  "displayName": {
+    "default": "SY Note Sync",
+    "zh_CN": "笔记同步"
+  },
+  "description": {
+    "default": "Multi-device sync for SiYuan notes, powered by a self-hosted hub server",
+    "zh_CN": "思源笔记多设备同步（自建中心化同步服务，支持 iOS / 桌面 / Docker）"
+  },
+  "keywords": ["sync", "同步", "note", "笔记"]
+}

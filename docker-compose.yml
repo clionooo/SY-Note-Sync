@@ -1,0 +1,23 @@
+# SY Note Sync —— 思源笔记中心化同步服务
+#
+# 一键起服务：docker compose up -d --build
+# 管理后台：  http://<NAS IP>:58282/admin
+name: sy-note-sync
+
+services:
+  sy-note-sync:
+    build: ./server
+    container_name: sy-note-sync
+    restart: unless-stopped
+    # 以 clion:Users 运行，数据文件属主正确，SMB 里能直接备份
+    user: "1000:1001"
+    ports:
+      - "58282:58282"                        # 宿主机端口:容器端口
+    environment:
+      # ⚠️ 务必改成你自己的管理令牌（注册设备 / 进后台都用它）
+      - SYNCSRV_ADMIN_TOKEN=change-me
+      # 对外访问地址（可选）：配了之后后台里的分享链接会用它拼
+      # - SYNCSRV_BASE_URL=https://sync.example.com
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./data:/app/data                     # SQLite + 快照持久化目录

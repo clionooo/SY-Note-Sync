@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>分享 · SY Note Sync</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/web/admin.css">
+<style>
+  body { background: var(--bg); }
+  .share-page { max-width: 780px; margin: 0 auto; padding: 44px 18px 80px; }
+  .share-head { margin-bottom: 22px; }
+  .share-head h1 { font-size: 24px; margin: 0 0 6px; }
+  .share-meta { color: var(--text-3); font-size: 12.5px; }
+  .share-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 12px; box-shadow: var(--shadow-sm); }
+  .share-block .blk { white-space: pre-wrap; word-break: break-word; line-height: 1.75; }
+  .share-block h1 { font-size: 21px; margin: 0 0 8px; }
+  .share-block h2 { font-size: 18px; margin: 12px 0 6px; }
+  .share-block h3 { font-size: 15.5px; margin: 10px 0 5px; }
+  .brandline { display: flex; align-items: center; gap: 9px; margin-bottom: 26px; color: var(--text-2); font-size: 13px; }
+  .brandline .brand-logo { width: 26px; height: 26px; font-size: 13px; border-radius: 7px; }
+  .pwd-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="share-page">
+  <div class="brandline"><div class="brand-logo">S</div><span id="siteName">SY Note Sync</span> · 分享</div>
+  <div id="root"><div class="empty">加载中…</div></div>
+</div>
+<script>
+'use strict';
+const token = location.pathname.split('/').pop();
+const $ = (id) => document.getElementById(id);
+
+if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+  document.documentElement.setAttribute('data-theme', 'dark');
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// 把思源块 DOM 粗略转成可读 HTML（只保留标题/段落/列表/加粗/斜体/代码）
+function render(html) {
+  let s = String(html || '');
+  s = s.replace(/<div[^>]*data-type="NodeHeading"[^>]*>/gi, '\n@@H@@');
+  s = s.replace(/<div[^>]*class="[^"]*\bh([1-6])\b[^"]*"[^>]*>/gi, (m, n) => '\n@@H' + n + '@@');
+  s = s.replace(/<div[^>]*>/gi, '\n');
+  s = s.replace(/<\/div>/gi, '');
+  s = s.replace(/<br\s*\/?>/gi, '\n');
+  s = s.replace(/<[^>]+>/g, '');
+  s = s.replace(/&nbsp;/g, ' ').replace(/\u200b/g, '');
+  s = s.split('\n').map(l => l.trim()).filter(l => l !== '').join('\n');
+  s = s.replace(/@@H([1-6])@@/g, (m, n) => '\n' + '#'.repeat(Number(n)) + ' ');
+  // 极简 markdown 渲染
+  const lines = s.split('\n');
+  let out = '', inList = false;
+  for (let line of lines) {
+    let m;
+    if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
+      if (inList) { out += '</ul>'; inList = false; }
+      const lv = Math.min(m[1].length + 1, 6);
+      out += `<h${lv}>${esc(m[2])}</h${lv}>`;
+    } else if ((m = line.match(/^[-*]\s+(.*)$/))) {
+      if (!inList) { out += '<ul>'; inList = true; }
+      out += `<li>${esc(m[1])}</li>`;
+    } else {
+      if (inList) { out += '</ul>'; inList = false; }
+      out += `<p>${esc(line).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>')}</p>`;
+    }
+  }
+  if (inList) out += '</ul>';
+  return out;
+}
+
+async function load(password) {
+  const url = '/api/share/' + encodeURIComponent(token) + (password ? '?password=' + encodeURIComponent(password) : '');
+  const res = await fetch(url);
+  const data = await res.json().catch(() => null);
+  if (res.status === 401 && data && data.needPassword) {
+    $('root').innerHTML = `
+      <div class="pwd-box">
+        <h2 style="margin-top:0">🔒 需要访问密码</h2>
+        <p class="share-meta">${esc(data.title || '')}</p>
+        <input id="pwd" class="input" type="password" placeholder="请输入密码" style="max-width:260px;margin:12px auto;display:block">
+        <button class="btn pri" id="pwdGo">查看</button>
+        <div id="pwdErr" class="hint" style="color:var(--danger)"></div>
+      </div>`;
+    $('pwdGo').onclick = () => load($('pwd').value);
+    $('pwd').onkeydown = (e) => { if (e.key === 'Enter') load($('pwd').value); };
+    return;
+  }
+  if (!res.ok) {
+    $('root').innerHTML = `<div class="empty"><span class="big">⚠</span>${esc((data && data.error) || '分享不可用')}</div>`;
+    return;
+  }
+  const items = data.items || [];
+  $('root').innerHTML = `
+    <div class="share-head">
+      <h1>${esc(data.title || '未命名分享')}</h1>
+      <div class="share-meta">共 ${items.length} 个块 · 访问 ${data.views} 次 · 只读</div>
+    </div>
+    ${items.map(it => `<div class="share-block">${render(it.content)}</div>`).join('') ||
+      '<div class="empty">这个分享里还没有内容</div>'}`;
+}
+
+fetch('/api/version').then(r => r.json()).then(v => {
+  if (v && v.serverName) { $('siteName').textContent = v.serverName; document.title = v.serverName + ' · 分享'; }
+}).catch(() => {});
+load();
+</script>
+</body>
+</html>

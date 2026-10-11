@@ -1,0 +1,97 @@
+/* SY Note Sync 插件样式（思源只加载 index.css，所以 vite 构建后要改名） */
+
+.sc-wrap { padding: 4px 2px 2px; }
+
+/* ---------- 分页签 ---------- */
+.sc-tabs {
+  display: flex; gap: 4px; border-bottom: 1px solid var(--b3-border-color);
+  margin-bottom: 14px; padding-bottom: 0;
+}
+.sc-tab {
+  border: none; background: none; cursor: pointer; padding: 7px 12px;
+  color: var(--b3-theme-on-surface); font-size: 13px; border-radius: 6px 6px 0 0;
+  border-bottom: 2px solid transparent; font-family: inherit;
+}
+.sc-tab:hover { background: var(--b3-theme-surface-lighter); }
+.sc-tab.active { color: var(--b3-theme-primary); border-bottom-color: var(--b3-theme-primary); font-weight: 600; }
+
+.sc-pane { min-height: 120px; }
+.sc-hide { display: none !important; }
+
+/* ---------- 表单 ---------- */
+.sc-field { margin-bottom: 12px; }
+.sc-field label { display: block; font-size: 12px; color: var(--b3-theme-on-surface); opacity: .75; margin-bottom: 5px; }
+.sc-full { width: 100% !important; box-sizing: border-box; }
+textarea.sc-full { resize: vertical; font-family: inherit; }
+
+.sc-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+/* ---------- 状态与帮助 ---------- */
+.sc-status { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.sc-pill {
+  font-size: 12px; padding: 3px 10px; border-radius: 20px;
+  background: var(--b3-theme-surface-lighter); color: var(--b3-theme-on-surface);
+}
+.sc-pill.ok { background: rgba(16, 163, 90, .15); color: #10a35a; font-weight: 600; }
+.sc-pill.bad { background: rgba(220, 43, 69, .15); color: #dc2b45; font-weight: 600; }
+.sc-err {
+  flex-basis: 100%; font-size: 12px; color: #dc2b45;
+  background: rgba(220, 43, 69, .08); padding: 6px 10px; border-radius: 6px;
+  word-break: break-all;
+}
+
+.sc-help {
+  background: var(--b3-theme-surface-lighter);
+  border: 1px solid var(--b3-border-color);
+  border-radius: 8px; padding: 10px 13px; font-size: 12.5px; line-height: 1.75;
+  margin-bottom: 14px; opacity: .92;
+}
+.sc-help p { margin: 3px 0; }
+
+.sc-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; border-bottom: 1px dashed var(--b3-border-color); font-size: 13px;
+}
+
+.sc-kv > div {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 7px 0; border-bottom: 1px dashed var(--b3-border-color); font-size: 13px;
+}
+.sc-kv span { opacity: .7; }
+.sc-kv b { font-weight: 600; text-align: right; word-break: break-all; }
+.sc-mono { font-family: var(--b3-font-family-code, monospace); font-size: 12px; }
+
+.sc-log {
+  max-height: 300px; overflow: auto; background: var(--b3-theme-surface-lighter);
+  border: 1px solid var(--b3-border-color); border-radius: 8px; padding: 10px;
+  font-family: var(--b3-font-family-code, monospace); font-size: 11.5px;
+  white-space: pre-wrap; word-break: break-all; line-height: 1.65;
+}
+
+/* ---------- 回收站 / 历史条目 ---------- */
+.sc-trash-item {
+  border: 1px solid var(--b3-border-color); border-radius: 6px;
+  padding: 9px 11px; margin-bottom: 8px; font-size: 13px;
+}
+.sc-trash-item pre {
+  max-height: 120px; overflow: auto; background: var(--b3-theme-surface-lighter);
+  padding: 6px 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-all;
+  font-size: 12px; margin: 6px 0;
+}
+
+/* ---------- 冲突弹窗：两版并排 ---------- */
+.synconflict .sc-versions { display: flex; gap: 12px; }
+.synconflict .sc-ver {
+  flex: 1; border: 1px solid var(--b3-border-color);
+  border-radius: 6px; padding: 9px 11px;
+}
+.synconflict .sc-ver h4 { margin: 0 0 6px; font-size: 13px; }
+.synconflict .sc-ver pre {
+  max-height: 200px; overflow: auto; background: var(--b3-theme-surface-lighter);
+  padding: 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-all;
+  font-size: 12px; margin: 0 0 8px;
+}
+
+@media (max-width: 640px) {
+  .synconflict .sc-versions { flex-direction: column; }
+}
